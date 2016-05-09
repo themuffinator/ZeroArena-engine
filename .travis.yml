@@ -9,13 +9,6 @@ env:
   global:
     # coverity token
     - secure: "dx0HqrtHdpgkV+v3jQiWuCPKZIc1pEBmMyhfhq5ah6+1AK/gzop5vVHzzBdLezGnsloutDN4Q/jiCWZORn3ZexxwFMnHCPQwkzkqo8s8UnAW4pXaAzqR/9tyYoyjpXXxjKBobS6aiLiWx7WFx9msO6a3arq/El8k21AnC05Dr2c="
-  matrix:
-    # standard builds
-    - CC=gcc
-    - CC=clang
-    # cross-compile using mingw
-    - CC= PLATFORM="mingw32" ARCH="x86"
-    - CC= PLATFORM="mingw32" ARCH="x86_64"
 
 script: ./travis-ci-build.sh
 
@@ -29,12 +22,6 @@ notifications:
 addons:
   apt:
     packages:
-      - binutils-mingw-w64-i686
-      - gcc-mingw-w64-i686
-      - binutils-mingw-w64-x86-64
-      - gcc-mingw-w64-x86-64
-      - gcc-mingw-w64
-      - mingw-w64
       - libgl1-mesa-dev
       - libsdl2-dev
   coverity_scan:
