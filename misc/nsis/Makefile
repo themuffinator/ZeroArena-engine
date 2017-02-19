@@ -7,6 +7,9 @@ endif
 ifndef RELEASE
 RELEASE=0
 endif
+ifndef PLATFORM
+PLATFORM=mingw32
+endif
 ifndef ARCH
 ARCH=x86
 endif
@@ -31,8 +34,13 @@ endif
 ifndef USE_INTERNAL_JPEG
 USE_INTERNAL_JPEG=1
 endif
-
-SDLDLL=SDL.dll
+ifndef SDLDLL
+	ifeq ($(ARCH),x86_64)
+		SDLDLL=SDL264.dll
+	else
+		SDLDLL=SDL2.dll
+	endif
+endif
 
 DEFINES=
 ifeq ($(USE_RENDERER_DLOPEN),1)
@@ -58,14 +66,14 @@ NSISFILENAME=${FSNAME}-${VERSION}-${RELEASE}.$(ARCH).exe
 
 all: $(NSISFILENAME)
 
-ioquake3.$(ARCH).nsi: ioquake3.nsi.in
-	sed 's/XXXFILENAMEXXX/$(NSISFILENAME)/;s/XXXVERSIONXXX/$(VERSION)/;s/XXXRELEASEXXX/$(RELEASE)/;s/x86/$(ARCH)/g;s/SDL.dll/$(SDLDLL)/' < $< > $@
+spearmint.$(ARCH).nsi: spearmint.nsi.in
+	sed 's/XXXFILENAMEXXX/$(NSISFILENAME)/;s/XXXVERSIONXXX/$(VERSION)/;s/XXXRELEASEXXX/$(RELEASE)/;s/mingw32/$(PLATFORM)/g;s/x86/$(ARCH)/g;s/SDL2.dll/$(SDLDLL)/' < $< > $@
 
-$(NSISFILENAME): ioquake3.$(ARCH).nsi
-	makensis $(DEFINES) ioquake3.$(ARCH).nsi
+$(NSISFILENAME): spearmint.$(ARCH).nsi
+	makensis $(DEFINES) spearmint.$(ARCH).nsi
 
 clean:
-	rm -rf *.exe ioquake3.$(ARCH).nsi
+	rm -rf *.exe spearmint.$(ARCH).nsi
 
 install:
 	mkdir -p $(INSTALLDIR)

@@ -250,7 +250,7 @@ typedef struct searchpath_s {
 static	char		fs_gamedir[MAX_OSPATH];	// this will be a single file name with no separators
 static	cvar_t		*fs_debug;
 static	cvar_t		*fs_homepath;
-#ifdef MACOS_X
+#ifdef __APPLE__
 // Also search the .app bundle for .pk3 files
 static	cvar_t		*fs_apppath;
 #endif
@@ -303,8 +303,8 @@ static int		fs_serverReferencedPaks[MAX_SEARCH_PATHS];			// checksums
 static char		*fs_serverReferencedPakNames[MAX_SEARCH_PATHS];		// pk3 names
 
 // last valid game folder used
-char lastValidBase[MAX_OSPATH] = {0};
-char lastValidGame[MAX_OSPATH] = {0};
+char lastValidBase[MAX_OSPATH];
+char lastValidGame[MAX_OSPATH];
 
 #ifdef FS_MISSING
 FILE*		missingFiles = NULL;
@@ -2843,7 +2843,7 @@ void FS_GetModDescription( const char *modDir, char *description, int descriptio
 	Com_sprintf( descPath, sizeof ( descPath ), "%s/description.txt", modDir );
 	nDescLen = FS_SV_FOpenFileRead( descPath, &descHandle );
 
-	if ( nDescLen > 0 && descHandle) {
+	if ( nDescLen > 0 && descHandle ) {
 		file = FS_FileForHandle(descHandle);
 		Com_Memset( description, 0, descriptionLen );
 		nDescLen = fread(description, 1, descriptionLen, file);
@@ -2877,7 +2877,7 @@ The directories are searched in base path, cd path and home path
 ================
 */
 int	FS_GetModList( char *listbuf, int bufsize ) {
-	int		nMods, i, j, nTotal, nLen, nPaks, nPotential, nDescLen;
+	int		nMods, i, j, pak, nTotal, nLen, nPaks, nPotential, nDescLen;
 	char **pFiles = NULL;
 	char **pPaks = NULL;
 	char *name, *path;
@@ -2926,31 +2926,31 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 			// we didn't keep the information when we merged the directory names, as to what OS Path it was found under
 			//   so it could be in base path, cd path or home path
 			//   we will try each three of them here (yes, it's a bit messy)
+			path = FS_BuildOSPath( fs_homepath->string, name, "" );
+			pFiles0 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
+
 			path = FS_BuildOSPath( fs_basepath->string, name, "" );
-			nPaks = 0;
-			pPaks = Sys_ListFiles(path, ".pk3", NULL, &nPaks, qfalse); 
-			Sys_FreeFileList( pPaks ); // we only use Sys_ListFiles to check wether .pk3 files are present
+			pFiles1 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
 
-			/* try on cd path */
-			if (nPaks <= 0 && fs_cdpath->string[0])
-			{
-				path = FS_BuildOSPath( fs_cdpath->string, name, "" );
-				nPaks = 0;
-				pPaks = Sys_ListFiles( path, ".pk3", NULL, &nPaks, qfalse );
-				Sys_FreeFileList( pPaks );
+			path = FS_BuildOSPath( fs_cdpath->string, name, "" );
+			pFiles2 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
+			// we searched for paks in the three paths
+			// it is possible that we have duplicate names now
+			pPaks = Sys_ConcatenateFileLists( pFiles0, pFiles1, pFiles2 );
+
+			nPaks = Sys_CountFileList(pPaks);
+
+			// don't list the mod if only Spearmint patch pk3 files are found
+			for ( pak = 0; pak < nPaks; pak++ ) {
+				if ( Q_stricmpn( pPaks[pak], "spearmint-patch", 15 ) ) {
+					// found a pk3 that isn't a Spearmint patch pk3
+					break;
+				}
 			}
 
-			/* try on home path */
-			// If fs_homepath == fs_basepath, don't bother
-			if (nPaks <= 0 && Q_stricmp(fs_homepath->string,fs_basepath->string))
-			{
-				path = FS_BuildOSPath( fs_homepath->string, name, "" );
-				nPaks = 0;
-				pPaks = Sys_ListFiles( path, ".pk3", NULL, &nPaks, qfalse );
-				Sys_FreeFileList( pPaks );
-			}
+			Sys_FreeFileList( pPaks );
 
-			if (nPaks > 0) {
+			if (nPaks > 0 && pak != nPaks) {
 				nLen = strlen(name) + 1;
 				// nLen is the length of the mod path
 				// we need to see if there is a description available
@@ -2966,6 +2966,7 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 					nMods++;
 				}
 				else {
+					Com_Printf( S_COLOR_YELLOW "WARNING: Ran out of space for mods in mod list (%d mods fit in the %d byte buffer)\n", nMods, bufsize );
 					break;
 				}
 			}

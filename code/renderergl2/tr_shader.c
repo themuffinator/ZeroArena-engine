@@ -2190,11 +2190,15 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 		&& shader.lightmapIndex < 0 )
 	{
 		if ( !( shader.surfaceParms & SURF_NOLIGHTMAP ) || ( shader.surfaceParms & SURF_POINTLIGHT ) ) {
-			// surfaceParm pointlight, vertex-approximated surfaces, non-lightmapped misc_models, or not a world surface
-			ri.Printf( PRINT_DEVELOPER, "WARNING: shader '%s' has lightmap stage but no lightmap, using diffuse lighting.\n", shader.name );
-			stage->bundle[0].isLightmap = qfalse;
-			stage->bundle[1].isLightmap = qfalse;
-			stage->rgbGen = R_DiffuseColorGen( shader.lightmapIndex );
+			if ( r_missingLightmapUseDiffuseLighting->integer ) {
+				// surfaceParm pointlight, vertex-approximated surfaces, non-lightmapped misc_models, or not a world surface
+				ri.Printf( PRINT_DEVELOPER, "WARNING: shader '%s' has lightmap stage but no lightmap, using diffuse lighting.\n", shader.name );
+				stage->bundle[0].isLightmap = qfalse;
+				stage->bundle[1].isLightmap = qfalse;
+				stage->rgbGen = R_DiffuseColorGen( shader.lightmapIndex );
+			} else {
+				ri.Printf( PRINT_DEVELOPER, "WARNING: shader '%s' has lightmap stage but no lightmap, using white image.\n", shader.name );
+			}
 		} else {
 			ri.Printf( PRINT_DEVELOPER, "WARNING: shader '%s' has lightmap stage but specifies no lightmap, using white image.\n", shader.name );
 		}
@@ -2655,10 +2659,12 @@ static qboolean ParseShader( char **text )
 			if (isGL2Sun)
 			{
 				token = COM_ParseExt( text, qfalse );
-				tr.mapLightScale = atof(token);
-
-				token = COM_ParseExt( text, qfalse );
 				tr.sunShadowScale = atof(token);
+
+				// parse twice, since older shaders may include mapLightScale before sunShadowScale
+				token = COM_ParseExt( text, qfalse );
+				if (token[0])
+					tr.sunShadowScale = atof(token);
 			}
 			continue;
 		}
@@ -2898,12 +2904,14 @@ static qboolean ParseShader( char **text )
 			if ( !Q_stricmp( token, "linear" ) ) {
 				shader.fogParms.fogType = FT_LINEAR;
 				shader.fogParms.density = DEFAULT_FOG_LINEAR_DENSITY;
+				shader.fogParms.farClip = shader.fogParms.depthForOpaque;
 			} else {
 				if ( Q_stricmp( token, "exp" ) && !Q_isanumber( token ) )
 					ri.Printf( PRINT_WARNING, "WARNING: unknown fog type '%s' for 'fogParms' keyword in shader '%s'\n", token, shader.name );
 
 				shader.fogParms.fogType = FT_EXP;
 				shader.fogParms.density = DEFAULT_FOG_EXP_DENSITY;
+				shader.fogParms.farClip = 0;
 			}
 
 			// note: skips any old gradient directions
@@ -2955,9 +2963,9 @@ static qboolean ParseShader( char **text )
 			// sets how big sky box size is too, not just fog tcscale
 			tr.skyFogDepthForOpaque = DEFAULT_FOG_EXP_DEPTH_FOR_OPAQUE;
 
-			tr.skyFogColorInt = ColorBytes4 ( fogColor[0] * tr.identityLight,
-										  fogColor[1] * tr.identityLight,
-										  fogColor[2] * tr.identityLight, 1.0 );
+			tr.skyFogColorInt = ColorBytes4 ( fogColor[0],
+										  fogColor[1],
+										  fogColor[2], 1.0 );
 
 			tr.skyFogTcScale = R_FogTcScale( tr.skyFogType, tr.skyFogDepthForOpaque, fogDensity );
 			continue;
@@ -2991,10 +2999,12 @@ static qboolean ParseShader( char **text )
 				tr.waterFogParms.fogType = FT_LINEAR;
 				tr.waterFogParms.depthForOpaque = fogvar;
 				tr.waterFogParms.density = DEFAULT_FOG_LINEAR_DENSITY;
+				tr.waterFogParms.farClip = fogvar;
 			} else {
 				tr.waterFogParms.fogType = FT_EXP;
 				tr.waterFogParms.density = fogvar;
 				tr.waterFogParms.depthForOpaque = DEFAULT_FOG_EXP_DEPTH_FOR_OPAQUE;
+				tr.waterFogParms.farClip = 0;
 			}
 
 			VectorCopy( waterColor, tr.waterFogParms.color );
@@ -3034,6 +3044,8 @@ static qboolean ParseShader( char **text )
 				shader.viewFogParms.depthForOpaque = DEFAULT_FOG_EXP_DEPTH_FOR_OPAQUE;
 			}
 
+			shader.viewFogParms.farClip = 0;
+
 			VectorCopy( viewColor, shader.viewFogParms.color );
 			continue;
 		}
@@ -3060,10 +3072,12 @@ static qboolean ParseShader( char **text )
 				tr.globalFogType = FT_LINEAR;
 				tr.globalFogDepthForOpaque = fogvar;
 				tr.globalFogDensity = DEFAULT_FOG_LINEAR_DENSITY;
+				tr.globalFogFarClip = fogvar;
 			} else {
 				tr.globalFogType = FT_EXP;
 				tr.globalFogDensity = fogvar;
 				tr.globalFogDepthForOpaque = DEFAULT_FOG_EXP_DEPTH_FOR_OPAQUE;
+				tr.globalFogFarClip = 0;
 			}
 
 			VectorCopy( fogColor, tr.globalFogColor );
@@ -3354,12 +3368,10 @@ static void ComputeVertexAttribs(void)
 		{
 			shader.vertexAttribs |= ATTR_NORMAL;
 
-#ifdef USE_VERT_TANGENT_SPACE
 			if ((pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK) && !(r_normalMapping->integer == 0 && r_specularMapping->integer == 0))
 			{
 				shader.vertexAttribs |= ATTR_TANGENT;
 			}
-#endif
 
 			switch (pStage->glslShaderIndex & LIGHTDEF_LIGHTTYPE_MASK)
 			{
@@ -3659,10 +3671,22 @@ static void CollapseStagesToLightall(shaderStage_t *diffuse,
 
 			// ZTM: FIXME: check shader_allowCompress? I don't think it's always valid here though.
 
+			// try a normalheight image first
 			COM_StripExtension(diffuseImg->imgName, normalName, MAX_QPATH);
-			Q_strcat(normalName, MAX_QPATH, "_n");
+			Q_strcat(normalName, MAX_QPATH, "_nh");
 
-			normalImg = R_FindImageFile(normalName, IMGTYPE_NORMAL, normalFlags);
+			normalImg = R_FindImageFile(normalName, IMGTYPE_NORMALHEIGHT, normalFlags);
+
+			if (normalImg)
+			{
+				parallax = qtrue;
+			}
+			else
+			{
+				// try a normal image ("_n" suffix)
+				normalName[strlen(normalName) - 1] = '\0';
+				normalImg = R_FindImageFile(normalName, IMGTYPE_NORMAL, normalFlags);
+			}
 
 			if (normalImg)
 			{

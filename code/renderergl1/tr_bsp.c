@@ -533,8 +533,10 @@ static void ParseTriSurf( dsurface_t *ds, drawVert_t *verts, msurface_t *surf, i
 	// get lightmap num
 	lightmapNum = LittleLong( ds->lightmapNum );
 
-	// Quake 3 misc_model doesn't have lightmap
-	if (lightmapNum == -1) {
+	// q3map misc_model has LIGHTMAP_NONE. q3map2 misc_model has LIGHTMAP_BY_VERTEX.
+	// Vanilla Q3 always used LIGHTMAP_BY_VERTEX, so correct old q3map misc_model value.
+	// (LIGHTMAP_NONE isn't valid on world surfaces anyway.)
+	if ( lightmapNum == LIGHTMAP_NONE ) {
 		lightmapNum = LIGHTMAP_BY_VERTEX;
 	}
 
@@ -2165,6 +2167,7 @@ void RE_LoadWorldMap( const bspFile_t *bsp ) {
 		VectorCopy( shader->fogParms.color, tr.globalFogColor );
 		tr.globalFogDepthForOpaque = shader->fogParms.depthForOpaque;
 		tr.globalFogDensity = shader->fogParms.density;
+		tr.globalFogFarClip = shader->fogParms.farClip;
 	}
 
 	R_InitExternalShaders();

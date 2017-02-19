@@ -39,7 +39,7 @@ Suite 120, Rockville, Maryland 20850 USA.
 
 // Keep this in-sync with VERSION in Makefile.
 #ifndef PRODUCT_VERSION
-	#define PRODUCT_VERSION			"0.2"
+	#define PRODUCT_VERSION			"0.4"
 #endif
 
 #define Q3_VERSION PRODUCT_NAME " " PRODUCT_VERSION
@@ -318,7 +318,7 @@ PROTOCOL
 ==============================================================
 */
 
-#define	PROTOCOL_VERSION	4
+#define	PROTOCOL_VERSION	10
 #define PROTOCOL_LEGACY_VERSION	0
 
 // maintain a list of compatible protocols for demo playing
@@ -415,7 +415,7 @@ typedef enum {
 
 void	VM_Init( void );
 vm_t	*VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *), 
-				   vmInterpret_t interpret );
+				   vmInterpret_t interpret, int zoneTag, int heapRequestedSize );
 // module should be bare: "cgame", not "cgame.dll" or "vm/cgame.qvm"
 
 void	VM_Free( vm_t *vm );
@@ -437,9 +437,9 @@ void	*VM_ExplicitArgPtr( vm_t *vm, intptr_t intValue );
 #define	VMA(x) VM_ArgPtr(args[x])
 #define	VMF(x)	IntAsFloat((int)args[x])
 
-void VM_ClearMemoryTags( vm_t *vm );
-intptr_t VM_ExplicitAlloc( vm_t *vm, int size, const char *tag );
-intptr_t VM_Alloc( int size, const char *tag );
+intptr_t VM_HeapMalloc( int size );
+int VM_HeapAvailable( void );
+void VM_HeapFree( void *data );
 
 /*
 ==============================================================
@@ -1032,7 +1032,8 @@ typedef enum {
 	TAG_RENDERER,
 	TAG_SMALL,
 	TAG_STATIC,
-	TAG_GAME
+	TAG_GAME,
+	TAG_CGAME
 } memtag_t;
 
 /*
@@ -1111,6 +1112,10 @@ void DA_GetElement( const darray_t darray, int num, void *data );
 void *DA_ElementPointer( const darray_t darray, int num );
 
 void Com_TouchMemory( void );
+
+void Z_VM_InitHeap( int tag, void *preallocated, int size );
+int Z_VM_HeapAvailable( int tag );
+void Z_VM_ShutdownHeap( int tag );
 
 // commandLine should not include the executable name (argv[0])
 void Com_Init( char *commandLine );
@@ -1268,7 +1273,7 @@ void	Sys_SetDefaultInstallPath(const char *path);
 char	*Sys_DefaultInstallPath(void);
 char	*Sys_SteamPath(void);
 
-#ifdef MACOS_X
+#ifdef __APPLE__
 char    *Sys_DefaultAppPath(void);
 #endif
 

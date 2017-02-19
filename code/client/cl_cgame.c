@@ -1421,10 +1421,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_LERPTAG_TORSO:
 		return re.LerpTag( VMA(1), args[2], args[3], args[4], args[5], args[6], VMF(7), VMA(8), VMA(9), VMA(10), args[11], args[12], args[13], args[14], VMF(15) );
 	case CG_R_GET_GLOBAL_FOG:
-		re.GetGlobalFog( VMA(1), VMA(2), VMA(3), VMA(4) );
+		re.GetGlobalFog( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5) );
 		return 0;
 	case CG_R_GET_VIEW_FOG:
-		re.GetViewFog( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), args[6] );
+		re.GetViewFog( VMA(1), VMA(2), VMA(3), VMA(4), VMA(5), VMA(6), args[7] );
 		return 0;
 	case CG_GETCLIPBOARDDATA:
 		CL_GetClipboardData( VMA(1), args[2] );
@@ -1644,8 +1644,13 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_PC_SOURCE_FILE_AND_LINE:
 		return botlib_export->PC_SourceFileAndLine( args[1], VMA(2), VMA(3) );
 
-	case CG_ALLOC:
-		return VM_Alloc( args[1], VMA(2) );
+	case CG_HEAP_MALLOC:
+		return VM_HeapMalloc( args[1] );
+	case CG_HEAP_AVAILABLE:
+		return VM_HeapAvailable();
+	case CG_HEAP_FREE:
+		VM_HeapFree( VMA(1) );
+		return 0;
 
 	case CG_REAL_TIME:
 		return Com_RealTime( VMA(1) );
@@ -1686,7 +1691,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return getCameraInfo(args[1], VMA(2), VMA(3));
 */
 	case CG_GET_ENTITY_TOKEN:
-		return re.GetEntityToken( VMA(1), args[2] );
+		return CM_GetEntityToken( VMA(1), VMA(2), args[3] );
 	case CG_R_INPVS:
 		return re.inPVS( VMA(1), VMA(2) );
 
@@ -1729,7 +1734,9 @@ void CL_InitCGame( void ) {
 	t1 = Sys_Milliseconds();
 
 	// load the dll or bytecode
-	cgvm = VM_Create( VM_PREFIX "cgame", CL_CgameSystemCalls, Cvar_VariableValue( "vm_cgame" ) );
+	cgvm = VM_Create( VM_PREFIX "cgame", CL_CgameSystemCalls, Cvar_VariableValue( "vm_cgame" ),
+			TAG_CGAME, Cvar_VariableValue( "vm_cgameHeapMegs" ) * 1024 * 1024 );
+
 	if ( !cgvm ) {
 		Com_Error( ERR_DROP, "VM_Create on cgame failed" );
 	}

@@ -573,9 +573,9 @@ void RE_BeginScene(const refdef_t *fd)
 		tr.refdef.fogType = FT_NONE;
 	}
 
-	tr.refdef.fogColor[0] = fd->fogColor[0] * tr.identityLight;
-	tr.refdef.fogColor[1] = fd->fogColor[1] * tr.identityLight;
-	tr.refdef.fogColor[2] = fd->fogColor[2] * tr.identityLight;
+	tr.refdef.fogColor[0] = fd->fogColor[0];
+	tr.refdef.fogColor[1] = fd->fogColor[1];
+	tr.refdef.fogColor[2] = fd->fogColor[2];
 
 	tr.refdef.fogColorInt = ColorBytes4( tr.refdef.fogColor[0],
 									  tr.refdef.fogColor[1],
@@ -589,6 +589,8 @@ void RE_BeginScene(const refdef_t *fd)
 		tr.refdef.fogDepthForOpaque = fd->fogDepthForOpaque < 1 ? 1 : fd->fogDepthForOpaque;
 	}
 	tr.refdef.fogTcScale = R_FogTcScale( tr.refdef.fogType, tr.refdef.fogDepthForOpaque, tr.refdef.fogDensity );
+
+	tr.refdef.maxFarClip = fd->farClip;
 
 	// copy the areamask data over and note if it has changed, which
 	// will force a reset of the visible leafs even if the view hasn't moved
@@ -616,18 +618,12 @@ void RE_BeginScene(const refdef_t *fd)
 
 	VectorCopy(tr.sunDirection, tr.refdef.sunDir);
 	if ( (tr.refdef.rdflags & RDF_NOWORLDMODEL) || !(r_depthPrepass->value) ){
-		tr.refdef.colorScale = 1.0f;
 		VectorSet(tr.refdef.sunCol, 0, 0, 0);
 		VectorSet(tr.refdef.sunAmbCol, 0, 0, 0);
 	}
 	else
 	{
-#if defined(USE_OVERBRIGHT)
-		float scale = (1 << (r_mapOverBrightBits->integer - tr.overbrightBits)) / 255.0f;
-#else
 		float scale = (1 << r_mapOverBrightBits->integer) / 255.0f;
-#endif
-		tr.refdef.colorScale = r_forceSun->integer ? r_forceSunMapLightScale->value : tr.mapLightScale;
 
 		if (r_forceSun->integer)
 			VectorScale(tr.sunLight, scale * r_forceSunLightScale->value, tr.refdef.sunCol);

@@ -379,8 +379,11 @@ cvar_t *Cvar_Get( const char *var_name, const char *var_value, int flags ) {
 		if(var->flags & CVAR_USER_CREATED)
 		{
 			var->flags &= ~CVAR_USER_CREATED;
-			Z_Free( var->resetString );
-			var->resetString = CopyString( var_value );
+
+			if ( !( var->flags & CVAR_CUSTOM_RESET ) ) {
+				Z_Free( var->resetString );
+				var->resetString = CopyString( var_value );
+			}
 
 			if(flags & CVAR_ROM)
 			{
@@ -504,6 +507,9 @@ cvar_t *Cvar_Get( const char *var_name, const char *var_value, int flags ) {
 Cvar_SetDefault
 
 Change default value of a cvar, or create if it doesn't exist
+
+This is treated as an 'untrusted' setting controlled by the user (cannot change current value of ROM cvars).
+If the VM registers the cvar later it claims ownership but the user specified default will be used.
 ============
 */
 cvar_t *Cvar_SetDefault( const char *var_name, const char *var_value ) {
@@ -537,7 +543,7 @@ cvar_t *Cvar_SetDefault( const char *var_name, const char *var_value ) {
 	}
 	else
 	{
-		var = Cvar_Get( var_name, var_value, CVAR_CUSTOM_RESET );
+		var = Cvar_Get( var_name, var_value, CVAR_CUSTOM_RESET | CVAR_USER_CREATED );
 	}
 
 	return var;
@@ -1052,6 +1058,7 @@ void Cvar_Set_f( void ) {
 	int		c;
 	char	*cmd;
 	cvar_t	*v;
+	int flag;
 
 	c = Cmd_Argc();
 	cmd = Cmd_Argv(0);
@@ -1071,23 +1078,33 @@ void Cvar_Set_f( void ) {
 	}
 	switch( cmd[3] ) {
 		case 'a':
-			if( !( v->flags & CVAR_ARCHIVE ) ) {
-				v->flags |= CVAR_ARCHIVE;
-				cvar_modifiedFlags |= CVAR_ARCHIVE;
-			}
+			flag = CVAR_ARCHIVE;
 			break;
 		case 'u':
-			if( !( v->flags & CVAR_USERINFO ) ) {
-				v->flags |= CVAR_USERINFO;
-				cvar_modifiedFlags |= CVAR_USERINFO;
+			switch( cmd[4] ) {
+				default:
+					flag = CVAR_USERINFO;
+					break;
+				case '2':
+					flag = CVAR_USERINFO2;
+					break;
+				case '3':
+					flag = CVAR_USERINFO3;
+					break;
+				case '4':
+					flag = CVAR_USERINFO4;
 			}
 			break;
 		case 's':
-			if( !( v->flags & CVAR_SERVERINFO ) ) {
-				v->flags |= CVAR_SERVERINFO;
-				cvar_modifiedFlags |= CVAR_SERVERINFO;
-			}
+			flag = CVAR_SERVERINFO;
 			break;
+		default:
+			flag = 0;
+	}
+
+	if( flag && !( v->flags & flag ) ) {
+		v->flags |= flag;
+		cvar_modifiedFlags |= flag;
 	}
 }
 
@@ -1687,6 +1704,12 @@ void Cvar_Init (void)
 	Cmd_SetCommandCompletionFunc( "sets", Cvar_CompleteCvarName );
 	Cmd_AddCommand ("setu", Cvar_Set_f);
 	Cmd_SetCommandCompletionFunc( "setu", Cvar_CompleteCvarName );
+	Cmd_AddCommand ("setu2", Cvar_Set_f);
+	Cmd_SetCommandCompletionFunc( "setu2", Cvar_CompleteCvarName );
+	Cmd_AddCommand ("setu3", Cvar_Set_f);
+	Cmd_SetCommandCompletionFunc( "setu3", Cvar_CompleteCvarName );
+	Cmd_AddCommand ("setu4", Cvar_Set_f);
+	Cmd_SetCommandCompletionFunc( "setu4", Cvar_CompleteCvarName );
 	Cmd_AddCommand ("seta", Cvar_Set_f);
 	Cmd_SetCommandCompletionFunc( "seta", Cvar_CompleteCvarName );
 	Cmd_AddCommand ("reset", Cvar_Reset_f);
