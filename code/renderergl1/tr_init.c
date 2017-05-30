@@ -81,6 +81,7 @@ cvar_t	*r_drawSun;
 cvar_t	*r_forceSunScale;
 cvar_t	*r_dynamiclight;
 cvar_t	*r_dlightBacks;
+cvar_t	*r_dlightImageSize;
 
 cvar_t	*r_lodbias;
 cvar_t	*r_lodscale;
@@ -171,6 +172,7 @@ cvar_t	*r_fontBorderWidth;
 cvar_t	*r_fontForceAutoHint;
 
 cvar_t	*r_marksOnTriangleMeshes;
+cvar_t	*r_marksOnBrushModels;
 
 cvar_t	*r_aviMotionJpegQuality;
 cvar_t	*r_screenshotJpegQuality;
@@ -1119,6 +1121,8 @@ void R_Register( void )
 	r_ignoreFastPath = ri.Cvar_Get( "r_ignoreFastPath", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	r_greyscale = ri.Cvar_Get("r_greyscale", "0", CVAR_ARCHIVE | CVAR_LATCH);
 	ri.Cvar_CheckRange(r_greyscale, 0, 1, qfalse);
+	r_dlightImageSize = ri.Cvar_Get( "r_dlightImageSize", "128", CVAR_ARCHIVE | CVAR_LATCH);
+	ri.Cvar_CheckRange(r_dlightImageSize, 16, 128, qfalse);
 
 	//
 	// temporary latched variables that can only change over a restart
@@ -1222,6 +1226,7 @@ void R_Register( void )
 	r_shadows = ri.Cvar_Get( "cg_shadows", "1", 0 );
 
 	r_marksOnTriangleMeshes = ri.Cvar_Get("r_marksOnTriangleMeshes", "0", CVAR_ARCHIVE);
+	r_marksOnBrushModels = ri.Cvar_Get("r_marksOnBrushModels", "1", CVAR_ARCHIVE);
 
 	// ZTM: FIXME: r_useGlFog doesn't work correctly with some multistage shaders. So when r_vertexLight is 0 it's fine.
 	r_useGlFog = ri.Cvar_Get("r_useGlFog", "0", CVAR_CHEAT);

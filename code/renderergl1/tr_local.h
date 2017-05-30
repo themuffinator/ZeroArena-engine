@@ -1187,6 +1187,7 @@ extern cvar_t	*r_drawSun;				// controls drawing of sun quad
 extern cvar_t	*r_forceSunScale;		// controls scale of sun quad
 extern cvar_t	*r_dynamiclight;		// dynamic lights enabled/disabled
 extern cvar_t	*r_dlightBacks;			// dlight non-facing surfaces for continuity
+extern cvar_t	*r_dlightImageSize;		// size of dlight image
 
 extern	cvar_t	*r_norefresh;			// bypasses the ref rendering
 extern	cvar_t	*r_drawentities;		// disable/enable entity rendering
@@ -1258,6 +1259,7 @@ extern	cvar_t	*r_debugSort;
 extern	cvar_t	*r_printShaders;
 
 extern cvar_t	*r_marksOnTriangleMeshes;
+extern cvar_t	*r_marksOnBrushModels;
 
 extern cvar_t	*r_useGlFog;
 
@@ -1345,11 +1347,27 @@ void	GL_Cull( int cullType );
 #define GLS_DEPTHTEST_DISABLE					0x00010000
 #define GLS_DEPTHFUNC_EQUAL						0x00020000
 
-#define GLS_ATEST_GT_0							0x10000000
-#define GLS_ATEST_LT_80							0x20000000
-#define GLS_ATEST_GE_80							0x40000000
-#define GLS_ATEST_GE_C0							0x80000000
-#define		GLS_ATEST_BITS						0xF0000000
+// Alpha test reference value (0 to 100, 7 bits).
+#define GLS_ATEST_REF_SHIFT						20
+#define		GLS_ATEST_REF_BITS					0x07F00000
+
+// Alpha test function (3 bits).
+#define GLS_ATEST_GREATER						0x10000000
+#define GLS_ATEST_LESS							0x20000000
+#define GLS_ATEST_GREATEREQUAL					0x30000000
+#define GLS_ATEST_LESSEQUAL						0x40000000
+#define GLS_ATEST_EQUAL							0x50000000
+#define GLS_ATEST_NOTEQUAL						0x60000000
+#define		GLS_ATEST_FUNC_BITS					0x70000000
+
+// Alpha test function and reference value bits.
+#define		GLS_ATEST_BITS						0x77F00000
+
+// Macros for Quake 3's alpha tests to reduce code changes.
+#define GLS_ATEST_GT_0						( GLS_ATEST_GREATER | ( 0 << GLS_ATEST_REF_SHIFT ) )
+#define GLS_ATEST_LT_80						( GLS_ATEST_LESS | ( 50 << GLS_ATEST_REF_SHIFT ) )
+#define GLS_ATEST_GE_80						( GLS_ATEST_GREATEREQUAL | ( 50 << GLS_ATEST_REF_SHIFT ) )
+#define GLS_ATEST_GE_C0						( GLS_ATEST_GREATEREQUAL | ( 75 << GLS_ATEST_REF_SHIFT ) )
 
 #define GLS_DEFAULT			GLS_DEPTHMASK_TRUE
 

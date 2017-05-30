@@ -940,9 +940,6 @@ static qboolean R_LoadMDC( model_t *mod, int lod, void *buffer, const char *modN
 			vaoSurf->numIndexes = surf->numIndexes;
 			vaoSurf->numVerts = surf->numVerts;
 			
-			vaoSurf->minIndex = 0;
-			vaoSurf->maxIndex = surf->numVerts - 1;
-
 			vaoSurf->vao = R_CreateVao(va("staticMD3Mesh_VAO '%s'", surf->name), data, dataSize, (byte *)surf->indexes, surf->numIndexes * sizeof(*surf->indexes), VAO_USAGE_STATIC);
 
 			vaoSurf->vao->attribs[ATTR_INDEX_POSITION].enabled = 1;
@@ -1393,9 +1390,6 @@ static qboolean R_LoadMD3(model_t * mod, int lod, void *buffer, int bufferSize, 
 			vaoSurf->mdvSurface = surf;
 			vaoSurf->numIndexes = surf->numIndexes;
 			vaoSurf->numVerts = surf->numVerts;
-			
-			vaoSurf->minIndex = 0;
-			vaoSurf->maxIndex = surf->numVerts - 1;
 
 			vaoSurf->vao = R_CreateVao(va("staticMD3Mesh_VAO '%s'", surf->name), data, dataSize, (byte *)surf->indexes, surf->numIndexes * sizeof(*surf->indexes), VAO_USAGE_STATIC);
 
@@ -1679,13 +1673,15 @@ static qboolean R_LoadTAN(model_t * mod, void *buffer, const char *modName)
 			st->st[1] = LittleFloat(md3st->st[1]);
 		}
 
-#ifdef USE_VERT_TANGENT_SPACE
 		// calc tangent spaces
 		{
+			vec3_t *sdirs = ri.Malloc(sizeof(*sdirs) * surf->numVerts * mdvModel->numFrames);
+			vec3_t *tdirs = ri.Malloc(sizeof(*tdirs) * surf->numVerts * mdvModel->numFrames);
+
 			for(j = 0, v = surf->verts; j < (surf->numVerts * mdvModel->numFrames); j++, v++)
 			{
-				VectorClear(v->tangent);
-				VectorClear(v->bitangent);
+				VectorClear(sdirs[j]);
+				VectorClear(tdirs[j]);
 			}
 
 			for(f = 0; f < mdvModel->numFrames; f++)
@@ -1710,29 +1706,33 @@ static qboolean R_LoadTAN(model_t * mod, void *buffer, const char *modName)
 
 					R_CalcTexDirs(sdir, tdir, v0, v1, v2, t0, t1, t2);
 
-					VectorAdd(sdir, surf->verts[index0].tangent,   surf->verts[index0].tangent);
-					VectorAdd(sdir, surf->verts[index1].tangent,   surf->verts[index1].tangent);
-					VectorAdd(sdir, surf->verts[index2].tangent,   surf->verts[index2].tangent);
-					VectorAdd(tdir, surf->verts[index0].bitangent, surf->verts[index0].bitangent);
-					VectorAdd(tdir, surf->verts[index1].bitangent, surf->verts[index1].bitangent);
-					VectorAdd(tdir, surf->verts[index2].bitangent, surf->verts[index2].bitangent);
+					VectorAdd(sdir, sdirs[index0], sdirs[index0]);
+					VectorAdd(sdir, sdirs[index1], sdirs[index1]);
+					VectorAdd(sdir, sdirs[index2], sdirs[index2]);
+					VectorAdd(tdir, tdirs[index0], tdirs[index0]);
+					VectorAdd(tdir, tdirs[index1], tdirs[index1]);
+					VectorAdd(tdir, tdirs[index2], tdirs[index2]);
 				}
 			}
 
 			for(j = 0, v = surf->verts; j < (surf->numVerts * mdvModel->numFrames); j++, v++)
 			{
-				vec3_t sdir, tdir;
+				vec3_t normal;
+				vec4_t tangent;
 
-				VectorCopy(v->tangent,   sdir);
-				VectorCopy(v->bitangent, tdir);
+				VectorNormalize(sdirs[j]);
+				VectorNormalize(tdirs[j]);
 
-				VectorNormalize(sdir);
-				VectorNormalize(tdir);
+				R_VaoUnpackNormal(normal, v->normal);
 
-				R_CalcTbnFromNormalAndTexDirs(v->tangent, v->bitangent, v->normal, sdir, tdir);
+				tangent[3] = R_CalcTangentSpace(tangent, NULL, normal, sdirs[j], tdirs[j]);
+
+				R_VaoPackTangent(v->tangent, tangent);
 			}
+
+			ri.Free(sdirs);
+			ri.Free(tdirs);
 		}
-#endif
 
 		// find the next surface
 		tanSurf = (tanSurface_t *) ((byte *) tanSurf + tanSurf->ofsEnd);
@@ -1838,9 +1838,6 @@ static qboolean R_LoadTAN(model_t * mod, void *buffer, const char *modName)
 			vaoSurf->mdvSurface = surf;
 			vaoSurf->numIndexes = surf->numIndexes;
 			vaoSurf->numVerts = surf->numVerts;
-			
-			vaoSurf->minIndex = 0;
-			vaoSurf->maxIndex = surf->numVerts - 1;
 
 			vaoSurf->vao = R_CreateVao(va("staticMD3Mesh_VAO '%s'", surf->name), data, dataSize, (byte *)surf->indexes, surf->numIndexes * sizeof(*surf->indexes), VAO_USAGE_STATIC);
 

@@ -1084,7 +1084,6 @@ static void ParseFoliage( dsurface_t *ds, drawVert_t *verts, float *hdrVertColor
 	int			numInstances;
 	vec3_t		bounds[2];
 	vec3_t		boundsTranslated[2];
-	vec4_t		color;
 	float		scale;
 
 	// get fog volume
@@ -1137,50 +1136,12 @@ static void ParseFoliage( dsurface_t *ds, drawVert_t *verts, float *hdrVertColor
 	verts += LittleLong(ds->firstVert);
 	for(i = 0; i < numVerts; i++)
 	{
-		for(j = 0; j < 3; j++)
-		{
-			cv->verts[i].xyz[j] = LittleFloat(verts[i].xyz[j]);
-			cv->verts[i].normal[j] = LittleFloat(verts[i].normal[j]);
-		}
+		LoadDrawVertToSrfVert(&cv->verts[i], &verts[i], -1, hdrVertColors ? hdrVertColors + (ds->firstVert + i) * 3 : NULL, NULL);
 
 		// scale height
 		cv->verts[i].xyz[2] *= scale;
 
-		AddPointToBounds( cv->verts[i].xyz, surf->cullinfo.bounds[0], surf->cullinfo.bounds[1] );
-
-		for(j = 0; j < 2; j++)
-		{
-			cv->verts[i].st[j] = LittleFloat(verts[i].st[j]);
-			cv->verts[i].lightmap[j] = LittleFloat(verts[i].lightmap[j]);
-		}
-
-#if 0 // ZTM: foliage doesn't use cv->verts[].vertexColors, uses foliage instance color for all verts.
-		if (hdrVertColors)
-		{
-			color[0] = hdrVertColors[(ds->firstVert + i) * 3    ];
-			color[1] = hdrVertColors[(ds->firstVert + i) * 3 + 1];
-			color[2] = hdrVertColors[(ds->firstVert + i) * 3 + 2];
-		}
-		else
-		{
-			//hack: convert LDR vertex colors to HDR
-			if (r_hdr->integer)
-			{
-				color[0] = verts[i].color[0] + 1.0f;
-				color[1] = verts[i].color[1] + 1.0f;
-				color[2] = verts[i].color[2] + 1.0f;
-			}
-			else
-			{
-				color[0] = verts[i].color[0];
-				color[1] = verts[i].color[1];
-				color[2] = verts[i].color[2];
-			}
-		}
-		color[3] = verts[i].color[3] / 255.0f;
-
-		R_ColorShiftLightingFloats( color, cv->verts[i].vertexColors );
-#endif
+		AddPointToBounds(cv->verts[i].xyz, surf->cullinfo.bounds[0], surf->cullinfo.bounds[1]);
 	}
 
 	// copy triangles
@@ -1216,6 +1177,12 @@ static void ParseFoliage( dsurface_t *ds, drawVert_t *verts, float *hdrVertColor
 	verts += numVerts;
 	for ( i = 0; i < numInstances; i++ )
 	{
+		srfVert_t instVert;
+
+		// get instance color
+		LoadDrawVertToSrfVert(&instVert, &verts[i], -1, hdrVertColors ? hdrVertColors + (ds->firstVert + i) * 3 : NULL, NULL);
+		Vector4Copy( instVert.color, cv->instances[ i ].color );
+
 		// copy xyz
 		for ( j = 0; j < 3; j++ )
 			cv->instances[ i ].origin[ j ] = LittleFloat( verts[ i ].xyz[ j ] );
@@ -1223,42 +1190,12 @@ static void ParseFoliage( dsurface_t *ds, drawVert_t *verts, float *hdrVertColor
 		VectorAdd( surf->cullinfo.bounds[ 1 ], cv->instances[ i ].origin, boundsTranslated[ 1 ] );
 		AddPointToBounds( boundsTranslated[ 0 ], bounds[ 0 ], bounds[ 1 ] );
 		AddPointToBounds( boundsTranslated[ 1 ], bounds[ 0 ], bounds[ 1 ] );
-
-		// copy color
-		if (hdrVertColors)
-		{
-			color[0] = hdrVertColors[(ds->firstVert + numVerts + i) * 3    ];
-			color[1] = hdrVertColors[(ds->firstVert + numVerts + i) * 3 + 1];
-			color[2] = hdrVertColors[(ds->firstVert + numVerts + i) * 3 + 2];
-		}
-		else
-		{
-			//hack: convert LDR vertex colors to HDR
-			if (r_hdr->integer)
-			{
-				color[0] = MAX(verts[i].color[0], 0.499f);
-				color[1] = MAX(verts[i].color[1], 0.499f);
-				color[2] = MAX(verts[i].color[2], 0.499f);
-			}
-			else
-			{
-				color[0] = verts[i].color[0];
-				color[1] = verts[i].color[1];
-				color[2] = verts[i].color[2];
-			}
-		}
-		color[3] = verts[i].color[3] / 255.0f;
-
-		R_ColorShiftLightingFloats( color, color );
-
-		VectorCopy( color, cv->instances[ i ].color );
 	}
 
 	// replace instance bounds with bounds of all foliage instances
 	VectorCopy( bounds[0], surf->cullinfo.bounds[0] );
 	VectorCopy( bounds[1], surf->cullinfo.bounds[1] );
 
-#ifdef USE_VERT_TANGENT_SPACE
 	// Calculate tangent spaces
 	{
 		srfVert_t      *dv[3];
@@ -1272,7 +1209,6 @@ static void ParseFoliage( dsurface_t *ds, drawVert_t *verts, float *hdrVertColor
 			R_CalcTangentVectors(dv);
 		}
 	}
-#endif
 
 	// finish surface
 	FinishGenericSurface( ds, cv->verts[ 0 ].xyz, &surf->cullinfo );
@@ -2020,428 +1956,6 @@ void R_MovePatchSurfacesToHunk(void) {
 	}
 }
 
-
-/*
-=================
-BSPSurfaceCompare
-compare function for qsort()
-=================
-*/
-static int BSPSurfaceCompare(const void *a, const void *b)
-{
-	msurface_t   *aa, *bb;
-
-	aa = *(msurface_t **) a;
-	bb = *(msurface_t **) b;
-
-	// shader first
-	if(aa->shader->sortedIndex < bb->shader->sortedIndex)
-		return -1;
-
-	else if(aa->shader->sortedIndex > bb->shader->sortedIndex)
-		return 1;
-
-	// by fogIndex
-	if(aa->fogIndex < bb->fogIndex)
-		return -1;
-
-	else if(aa->fogIndex > bb->fogIndex)
-		return 1;
-
-	// by cubemapIndex
-	if(aa->cubemapIndex < bb->cubemapIndex)
-		return -1;
-
-	else if(aa->cubemapIndex > bb->cubemapIndex)
-		return 1;
-
-	// by leaf
-	if (s_worldData.surfacesViewCount[aa - s_worldData.surfaces] < s_worldData.surfacesViewCount[bb - s_worldData.surfaces])
-		return -1;
-
-	else if (s_worldData.surfacesViewCount[aa - s_worldData.surfaces] > s_worldData.surfacesViewCount[bb - s_worldData.surfaces])
-		return 1;
-
-	// by surface number
-	if (aa < bb)
-		return -1;
-
-	else if (aa > bb)
-		return 1;
-
-	return 0;
-}
-
-
-static void CopyVert(const srfVert_t * in, srfVert_t * out)
-{
-	VectorCopy(in->xyz,      out->xyz);
-	VectorCopy4(in->tangent, out->tangent);
-	VectorCopy4(in->normal,   out->normal);
-	VectorCopy4(in->lightdir, out->lightdir);
-
-	VectorCopy2(in->st,       out->st);
-	VectorCopy2(in->lightmap, out->lightmap);
-
-	VectorCopy4(in->color,    out->color);
-}
-
-
-/*
-===============
-R_CreateWorldVaos
-===============
-*/
-static void R_CreateWorldVaos(void)
-{
-	int             i, j, k;
-
-	int             numVerts;
-	srfVert_t      *verts;
-
-	int             numIndexes;
-	glIndex_t      *indexes;
-
-    int             numSortedSurfaces, numSurfaces;
-	msurface_t   *surface, **firstSurf, **lastSurf, **currSurf;
-	msurface_t  **surfacesSorted;
-
-	vao_t *vao;
-
-	int maxVboSize = 4 * 1024 * 1024;
-
-	int             startTime, endTime;
-
-	startTime = ri.Milliseconds();
-
-	// mark surfaces with best matching leaf, using overlapping bounds
-	// using surfaceViewCount[] as leaf number, and surfacesDlightBits[] as coverage * 256
-	for (i = 0; i < s_worldData.numWorldSurfaces; i++)
-	{
-		s_worldData.surfacesViewCount[i] = -1;
-	}
-
-	for (i = 0; i < s_worldData.numWorldSurfaces; i++)
-	{
-		s_worldData.surfacesDlightBits[i] = 0;
-	}
-
-	for (i = s_worldData.numDecisionNodes; i < s_worldData.numnodes; i++)
-	{
-		mnode_t *leaf = s_worldData.nodes + i;
-
-		for (j = leaf->firstmarksurface; j < leaf->firstmarksurface + leaf->nummarksurfaces; j++)
-		{
-			int surfaceNum = s_worldData.marksurfaces[j];
-			msurface_t *surface = s_worldData.surfaces + surfaceNum;
-			float coverage = 1.0f;
-			int iCoverage;
-
-			for (k = 0; k < 3; k++)
-			{
-				float left, right;
-
-				if (leaf->mins[k] > surface->cullinfo.bounds[1][k] || surface->cullinfo.bounds[0][k] > leaf->maxs[k])
-				{
-					coverage = 0.0f;
-					break;
-				}
-
-				left  = MAX(leaf->mins[k], surface->cullinfo.bounds[0][k]);
-				right = MIN(leaf->maxs[k], surface->cullinfo.bounds[1][k]);
-
-				// nudge a bit in case this is an axis aligned wall
-				coverage *= right - left + 1.0f/256.0f;
-			}
-
-			iCoverage = coverage * 256;
-
-			if (iCoverage > s_worldData.surfacesDlightBits[surfaceNum])
-			{
-				s_worldData.surfacesDlightBits[surfaceNum] = iCoverage;
-				s_worldData.surfacesViewCount[surfaceNum] = i - s_worldData.numDecisionNodes;
-			}
-		}
-	}
-
-	for (i = 0; i < s_worldData.numWorldSurfaces; i++)
-	{
-		s_worldData.surfacesDlightBits[i] = 0;
-	}
-
-	// count surfaces
-	numSortedSurfaces = 0;
-	for(surface = s_worldData.surfaces; surface < s_worldData.surfaces + s_worldData.numWorldSurfaces; surface++)
-	{
-		srfBspSurface_t *bspSurf;
-		shader_t *shader = surface->shader;
-
-		if (shader->isPortal || shader->isSky || ShaderRequiresCPUDeforms(shader))
-			continue;
-
-		// check for this now so we can use srfBspSurface_t* universally in the rest of the function
-		if (!(*surface->data == SF_FACE || *surface->data == SF_GRID || *surface->data == SF_TRIANGLES))
-			continue;
-
-		bspSurf = (srfBspSurface_t *) surface->data;
-
-		if (!bspSurf->numIndexes || !bspSurf->numVerts)
-			continue;
-
-		numSortedSurfaces++;
-	}
-
-	// presort surfaces
-	surfacesSorted = ri.Malloc(numSortedSurfaces * sizeof(*surfacesSorted));
-
-	j = 0;
-	for(surface = s_worldData.surfaces; surface < s_worldData.surfaces + s_worldData.numWorldSurfaces; surface++)
-	{
-		srfBspSurface_t *bspSurf;
-		shader_t *shader = surface->shader;
-
-		if (shader->isPortal || shader->isSky || ShaderRequiresCPUDeforms(shader))
-			continue;
-
-		// check for this now so we can use srfBspSurface_t* universally in the rest of the function
-		if (!(*surface->data == SF_FACE || *surface->data == SF_GRID || *surface->data == SF_TRIANGLES))
-			continue;
-
-		bspSurf = (srfBspSurface_t *) surface->data;
-
-		if (!bspSurf->numIndexes || !bspSurf->numVerts)
-			continue;
-
-		surfacesSorted[j++] = surface;
-	}
-
-	qsort(surfacesSorted, numSortedSurfaces, sizeof(*surfacesSorted), BSPSurfaceCompare);
-
-	k = 0;
-	for(firstSurf = lastSurf = surfacesSorted; firstSurf < surfacesSorted + numSortedSurfaces; firstSurf = lastSurf)
-	{
-		int currVboSize;
-
-		// Find range of surfaces to place in a VAO by:
-		// - Collecting a number of surfaces which fit under maxVboSize, or
-		// - All the surfaces with a single shader which go over maxVboSize
-		currVboSize = 0;
-		while (currVboSize < maxVboSize && lastSurf < surfacesSorted + numSortedSurfaces)
-		{
-			int addVboSize, currShaderIndex;
-
-			addVboSize = 0;
-			currShaderIndex = (*lastSurf)->shader->sortedIndex;
-
-			for(currSurf = lastSurf; currSurf < surfacesSorted + numSortedSurfaces && (*currSurf)->shader->sortedIndex == currShaderIndex; currSurf++)
-			{
-				srfBspSurface_t *bspSurf = (srfBspSurface_t *) (*currSurf)->data;
-
-				addVboSize += bspSurf->numVerts * sizeof(srfVert_t);
-			}
-
-			if (currVboSize != 0 && addVboSize + currVboSize > maxVboSize)
-				break;
-
-			lastSurf = currSurf;
-
-			currVboSize += addVboSize;
-		}
-
-		// count verts/indexes/surfaces
-		numVerts = 0;
-		numIndexes = 0;
-		numSurfaces = 0;
-		for (currSurf = firstSurf; currSurf < lastSurf; currSurf++)
-		{
-			srfBspSurface_t *bspSurf = (srfBspSurface_t *) (*currSurf)->data;
-
-			numVerts += bspSurf->numVerts;
-			numIndexes += bspSurf->numIndexes;
-			numSurfaces++;
-		}
-
-		ri.Printf(PRINT_ALL, "...calculating world VAO %d ( %i verts %i tris )\n", k, numVerts, numIndexes / 3);
-
-		// create arrays
-		verts = ri.Hunk_AllocateTempMemory(numVerts * sizeof(srfVert_t));
-		indexes = ri.Hunk_AllocateTempMemory(numIndexes * sizeof(glIndex_t));
-
-		// set up indices and copy vertices
-		numVerts = 0;
-		numIndexes = 0;
-		for (currSurf = firstSurf; currSurf < lastSurf; currSurf++)
-		{
-			srfBspSurface_t *bspSurf = (srfBspSurface_t *) (*currSurf)->data;
-			glIndex_t *surfIndex;
-
-			bspSurf->firstIndex = numIndexes;
-			bspSurf->minIndex = numVerts + bspSurf->indexes[0];
-			bspSurf->maxIndex = numVerts + bspSurf->indexes[0];
-
-			for(i = 0, surfIndex = bspSurf->indexes; i < bspSurf->numIndexes; i++, surfIndex++)
-			{
-				indexes[numIndexes++] = numVerts + *surfIndex;
-				bspSurf->minIndex = MIN(bspSurf->minIndex, numVerts + *surfIndex);
-				bspSurf->maxIndex = MAX(bspSurf->maxIndex, numVerts + *surfIndex);
-			}
-
-			bspSurf->firstVert = numVerts;
-
-			for(i = 0; i < bspSurf->numVerts; i++)
-			{
-				CopyVert(&bspSurf->verts[i], &verts[numVerts++]);
-			}
-		}
-
-		vao = R_CreateVao2(va("staticBspModel%i_VAO", k), numVerts, verts, numIndexes, indexes);
-
-		// point bsp surfaces to VAO
-		for (currSurf = firstSurf; currSurf < lastSurf; currSurf++)
-		{
-			srfBspSurface_t *bspSurf = (srfBspSurface_t *) (*currSurf)->data;
-
-			bspSurf->vao = vao;
-		}
-
-		ri.Hunk_FreeTempMemory(indexes);
-		ri.Hunk_FreeTempMemory(verts);
-
-		k++;
-	}
-
-	if (r_mergeLeafSurfaces->integer)
-	{
-		msurface_t *mergedSurf;
-
-		// count merged surfaces
-		int numMergedSurfaces = 0, numUnmergedSurfaces = 0;
-		for(firstSurf = lastSurf = surfacesSorted; firstSurf < surfacesSorted + numSortedSurfaces; firstSurf = lastSurf)
-		{
-			for (lastSurf++ ; lastSurf < surfacesSorted + numSortedSurfaces; lastSurf++)
-			{
-				int lastSurfLeafIndex, firstSurfLeafIndex;
-
-				if ((*lastSurf)->shader         != (*firstSurf)->shader
-				 || (*lastSurf)->fogIndex       != (*firstSurf)->fogIndex
-				 || (*lastSurf)->cubemapIndex   != (*firstSurf)->cubemapIndex)
-					break;
-
-				lastSurfLeafIndex  = s_worldData.surfacesViewCount[*lastSurf  - s_worldData.surfaces];
-				firstSurfLeafIndex = s_worldData.surfacesViewCount[*firstSurf - s_worldData.surfaces];
-
-				if (lastSurfLeafIndex != firstSurfLeafIndex)
-					break;
-			}
-
-			// don't merge single surfaces
-			if (firstSurf + 1 == lastSurf)
-			{
-				numUnmergedSurfaces++;
-				continue;
-			}
-
-			numMergedSurfaces++;
-		}
-
-		// Allocate merged surfaces
-		s_worldData.mergedSurfaces = ri.Hunk_Alloc(sizeof(*s_worldData.mergedSurfaces) * numMergedSurfaces, h_low);
-		s_worldData.mergedSurfacesViewCount = ri.Hunk_Alloc(sizeof(*s_worldData.mergedSurfacesViewCount) * numMergedSurfaces, h_low);
-		s_worldData.mergedSurfacesDlightBits = ri.Hunk_Alloc(sizeof(*s_worldData.mergedSurfacesDlightBits) * numMergedSurfaces, h_low);
-		s_worldData.mergedSurfacesPshadowBits = ri.Hunk_Alloc(sizeof(*s_worldData.mergedSurfacesPshadowBits) * numMergedSurfaces, h_low);
-		s_worldData.numMergedSurfaces = numMergedSurfaces;
-		
-		// view surfaces are like mark surfaces, except negative ones represent merged surfaces
-		// -1 represents 0, -2 represents 1, and so on
-		s_worldData.viewSurfaces = ri.Hunk_Alloc(sizeof(*s_worldData.viewSurfaces) * s_worldData.nummarksurfaces, h_low);
-
-		// actually merge surfaces
-		mergedSurf = s_worldData.mergedSurfaces;
-		for(firstSurf = lastSurf = surfacesSorted; firstSurf < surfacesSorted + numSortedSurfaces; firstSurf = lastSurf)
-		{
-			srfBspSurface_t *bspSurf, *vaoSurf;
-
-			for ( lastSurf++ ; lastSurf < surfacesSorted + numSortedSurfaces; lastSurf++)
-			{
-				int lastSurfLeafIndex, firstSurfLeafIndex;
-
-				if ((*lastSurf)->shader         != (*firstSurf)->shader
-				 || (*lastSurf)->fogIndex       != (*firstSurf)->fogIndex
-				 || (*lastSurf)->cubemapIndex   != (*firstSurf)->cubemapIndex)
-					break;
-
-				lastSurfLeafIndex  = s_worldData.surfacesViewCount[*lastSurf  - s_worldData.surfaces];
-				firstSurfLeafIndex = s_worldData.surfacesViewCount[*firstSurf - s_worldData.surfaces];
-
-				if (lastSurfLeafIndex != firstSurfLeafIndex)
-					break;
-			}
-
-			// don't merge single surfaces
-			if (firstSurf + 1 == lastSurf)
-				continue;
-
-			bspSurf = (srfBspSurface_t *)(*firstSurf)->data;
-
-			vaoSurf = ri.Hunk_Alloc(sizeof(*vaoSurf), h_low);
-			memset(vaoSurf, 0, sizeof(*vaoSurf));
-			vaoSurf->surfaceType = SF_VAO_MESH;
-
-			vaoSurf->vao = bspSurf->vao;
-
-			vaoSurf->firstIndex = bspSurf->firstIndex;
-			vaoSurf->minIndex = bspSurf->minIndex;
-			vaoSurf->maxIndex = bspSurf->maxIndex;
-
-			ClearBounds(vaoSurf->cullBounds[0], vaoSurf->cullBounds[1]);
-			for (currSurf = firstSurf; currSurf < lastSurf; currSurf++)
-			{
-				srfBspSurface_t *currBspSurf = (srfBspSurface_t *)(*currSurf)->data;
-
-				vaoSurf->numVerts   += currBspSurf->numVerts;
-				vaoSurf->numIndexes += currBspSurf->numIndexes;
-				vaoSurf->minIndex = MIN(vaoSurf->minIndex, currBspSurf->minIndex);
-				vaoSurf->maxIndex = MAX(vaoSurf->maxIndex, currBspSurf->maxIndex);
-				AddPointToBounds((*currSurf)->cullinfo.bounds[0], vaoSurf->cullBounds[0], vaoSurf->cullBounds[1]);
-				AddPointToBounds((*currSurf)->cullinfo.bounds[1], vaoSurf->cullBounds[0], vaoSurf->cullBounds[1]);
-			}
-
-			VectorCopy(vaoSurf->cullBounds[0], mergedSurf->cullinfo.bounds[0]);
-			VectorCopy(vaoSurf->cullBounds[1], mergedSurf->cullinfo.bounds[1]);
-
-			mergedSurf->cullinfo.type =  CULLINFO_BOX;
-			mergedSurf->data          =  (surfaceType_t *)vaoSurf;
-			mergedSurf->fogIndex      =  (*firstSurf)->fogIndex;
-			mergedSurf->cubemapIndex  =  (*firstSurf)->cubemapIndex;
-			mergedSurf->shader        =  (*firstSurf)->shader;
-
-			// change surfacesViewCount[] from leaf index to viewSurface index - 1 so we can redirect later
-			// subtracting 2 (viewSurface index - 1) to avoid collision with -1 (no leaf)
-			for (currSurf = firstSurf; currSurf < lastSurf; currSurf++)
-				s_worldData.surfacesViewCount[*currSurf - s_worldData.surfaces] = -((int)(mergedSurf - s_worldData.mergedSurfaces)) - 2;
-
-			mergedSurf++;
-		}
-
-		// direct viewSurfaces to merged and unmerged surfaces
-		for (i = 0; i < s_worldData.nummarksurfaces; i++)
-		{
-			int viewSurfaceIndex = s_worldData.surfacesViewCount[s_worldData.marksurfaces[i]] + 1;
-			s_worldData.viewSurfaces[i] = (viewSurfaceIndex < 0) ? viewSurfaceIndex : s_worldData.marksurfaces[i];
-		}
-
-		ri.Printf(PRINT_ALL, "Processed %d mergeable surfaces into %d merged, %d unmerged\n",
-			numSortedSurfaces, numMergedSurfaces, numUnmergedSurfaces);
-	}
-
-	for (i = 0; i < s_worldData.numWorldSurfaces; i++)
-		s_worldData.surfacesViewCount[i] = -1;
-
-	ri.Free(surfacesSorted);
-
-	endTime = ri.Milliseconds();
-	ri.Printf(PRINT_ALL, "world VAOs calculation time = %5.2f seconds\n", (endTime - startTime) / 1000.0);
-}
 
 /*
 ===============
@@ -3519,9 +3033,9 @@ void R_CalcVertexLightDirs( void )
 					vec3_t lightDir;
 					vec3_t normal;
 
-					R_VaoUnpackNormal(normal, bspSurf->verts[i].normal);
+					R_VaoUnpackNormal(normal, srf->verts[i].normal);
 					R_LightDirForPoint( srf->verts[i].xyz, lightDir, normal, &s_worldData );
-					R_VaoPackNormal(bspSurf->verts[i].lightdir, lightDir);
+					R_VaoPackNormal(srf->verts[i].lightdir, lightDir);
 				}
 				break;
 			}
@@ -3819,9 +3333,6 @@ void RE_LoadWorldMap( const bspFile_t *bsp ) {
 			R_AssignCubemapsToWorldSurfaces();
 		}
 	}
-
-	// create static VAOS from the world
-	R_CreateWorldVaos();
 
 	s_worldData.dataSize = (byte *)ri.Hunk_Alloc(0, h_low) - startMarker;
 
