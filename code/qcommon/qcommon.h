@@ -39,15 +39,16 @@ Suite 120, Rockville, Maryland 20850 USA.
 
 // Keep this in-sync with VERSION in Makefile.
 #ifndef PRODUCT_VERSION
-	#define PRODUCT_VERSION			"0.4"
+	#define PRODUCT_VERSION			"0.5"
 #endif
 
 #define Q3_VERSION PRODUCT_NAME " " PRODUCT_VERSION
 
 // Settings directory name
-#define HOMEPATH_NAME_UNIX			".spearmint"
-#define HOMEPATH_NAME_WIN			"Spearmint"
-#define HOMEPATH_NAME_MACOSX		HOMEPATH_NAME_WIN
+// GNU/Linux: $HOME/.local/share/homepath-name (lower case and spaces replaced with hyphens)
+// MacOS: $HOME/Library/Application Support/Homepath Name
+// Windows: %APPDATA%\Homepath Name
+#define HOMEPATH_NAME				"Spearmint"
 
 // Steam installation information
 //#define STEAMPATH_NAME			"Quake 3 Arena"
@@ -69,13 +70,19 @@ Suite 120, Rockville, Maryland 20850 USA.
 // Prefix for renderer native libraries. Example: PREFIXopengl1_x86.dll
 // Change this if you break renderer compatibility with Spearmint.
 // You'll also need to change RENDERER_PREFIX in Makefile.
-#define RENDERER_PREFIX				"mint-renderer-"
+#ifndef RENDERER_PREFIX
+	#define RENDERER_PREFIX			"spearmint-renderer-"
+#endif
 
 // Default game to load (default fs_game value).
 // You can change this and it won't break network compatiblity.
 #ifndef BASEGAME
 	#define BASEGAME				"baseq3"
 #endif
+
+// File containing a list of games to check if are installed to use as default base game.
+// This overrides BASEGAME if a game is found. If none are found, uses BASEGAME.
+#define MINT_GAMELIST					"spearmint-gamelist.txt"
 
 // In the future if the client-server protocol is modified, this may allow old and new engines to play together
 //#define LEGACY_PROTOCOL
@@ -318,7 +325,7 @@ PROTOCOL
 ==============================================================
 */
 
-#define	PROTOCOL_VERSION	10
+#define	PROTOCOL_VERSION	11
 #define PROTOCOL_LEGACY_VERSION	0
 
 // maintain a list of compatible protocols for demo playing
@@ -487,10 +494,12 @@ then searches for a command or variable that matches the first token.
 */
 
 typedef void (*xcommand_t) (void);
+typedef void (*completionFunc_t)( char *args, int argNum );
 
 void	Cmd_Init (void);
 
 void	Cmd_AddCommand( const char *cmd_name, xcommand_t function );
+void	Cmd_AddCommandWithCompletion( const char *cmd_name, xcommand_t function, completionFunc_t complete );
 // called by the init functions of other parts of the program to
 // register commands and functions to call for them.
 // The cmd_name is referenced later, so it should not be in temp memory
@@ -500,10 +509,8 @@ void	Cmd_AddCommand( const char *cmd_name, xcommand_t function );
 void	Cmd_RemoveCommand( const char *cmd_name );
 void	Cmd_RemoveCommandsByFunc( xcommand_t function );
 
-typedef void (*completionFunc_t)( char *args, int argNum );
-
 // don't allow VMs to remove system commands
-void	Cmd_AddCommandSafe( const char *cmd_name, xcommand_t function );
+void	Cmd_AddCommandSafe( const char *cmd_name, xcommand_t function, completionFunc_t complete );
 void	Cmd_RemoveCommandSafe( const char *cmd_name, xcommand_t function );
 
 void	Cmd_CommandCompletion( void(*callback)(const char *s) );
@@ -521,7 +528,6 @@ char	*Cmd_ArgsFrom( int arg );
 void	Cmd_ArgsBuffer( char *buffer, int bufferLength );
 void	Cmd_LiteralArgsBuffer( char *buffer, int bufferLength );
 char	*Cmd_Cmd (void);
-void	Cmd_Args_Sanitize( void );
 // The functions that execute commands get their parameters with these
 // functions. Cmd_Argv () will return an empty string, not a NULL
 // if arg > argc, so string operations are allways safe.
@@ -722,7 +728,8 @@ qboolean FS_CompareZipChecksum(const char *zipfile);
 
 int		FS_LoadStack( void );
 
-int		FS_GetFileList(  const char *path, const char *extension, char *listbuf, int bufsize );
+char		**FS_GetFileList( const char *path, const char *extension, int *numfiles, qboolean allowNonPureFilesOnDisk );
+int		FS_GetFileListBuffer( const char *path, const char *extension, char *listbuf, int bufsize );
 int		FS_GetModList(  char *listbuf, int bufsize );
 
 void	FS_GetModDescription( const char *modDir, char *description, int descriptionLen );
@@ -812,7 +819,7 @@ void FS_PureServerSetLoadedPaks( const char *pakSums, const char *pakNames );
 // sole exception of .cfg files.
 
 qboolean FS_CheckDirTraversal(const char *checkdir);
-pakType_t FS_ReferencedPakType( const char *name, int checksum );
+pakType_t FS_ReferencedPakType( const char *name, int checksum, qboolean *installed );
 qboolean FS_ComparePaks( char *neededpaks, int len, qboolean dlstring );
 
 qboolean FS_Rename( const char *from, const char *to );
@@ -820,11 +827,13 @@ qboolean FS_Rename( const char *from, const char *to );
 int FS_Remove( const char *osPath );
 int FS_HomeRemove( const char *homePath );
 
-void	FS_FilenameCompletion( const char *dir, const char *ext,
+void	FS_FilenameCompletion( char **filenames, int nfiles,
 		qboolean stripExt, void(*callback)(const char *s), qboolean allowNonPureFilesOnDisk );
 
 const char *FS_GetCurrentGameDir(void);
 qboolean FS_Which(const char *filename, void *searchPath);
+
+qboolean FS_IsDemoExt(const char *filename, int namelen);
 
 /*
 ==============================================================
@@ -878,8 +887,9 @@ void Field_AutoComplete( field_t *edit );
 void Field_CompleteKeyname( void );
 void Field_CompleteFilename( const char *dir,
 		const char *ext, qboolean stripExt, qboolean allowNonPureFilesOnDisk );
-void Field_CompleteCommand( char *cmd,
+void Field_CompleteCommand( const char *cmd,
 		qboolean doCommands, qboolean doCvars );
+void Field_CompleteList( const char *list );
 
 /*
 ==============================================================
@@ -1000,13 +1010,14 @@ extern	cvar_t	*com_protocol;
 #ifdef LEGACY_PROTOCOL
 extern	cvar_t	*com_legacyprotocol;
 #endif
+#ifndef DEDICATED
+extern  cvar_t  *con_autochat;
+#endif
+
+extern	cvar_t	*com_demoext;
 
 #ifdef USE_RENDERER_DLOPEN
 extern	cvar_t	*com_renderer;
-#endif
-
-#ifndef DEDICATED
-extern	cvar_t	*con_autochat;
 #endif
 
 // com_speeds times
@@ -1052,10 +1063,6 @@ temp file loading
 --- high memory ---
 
 */
-
-#if !defined(NDEBUG) && !defined(BSPC)
-	#define ZONE_DEBUG
-#endif
 
 #ifdef ZONE_DEBUG
 #define Z_TagMalloc(size, tag)			Z_TagMallocDebug(size, tag, #size, __FILE__, __LINE__)
@@ -1189,7 +1196,7 @@ void CL_StartHunkUsers( qboolean rendererOnly );
 qboolean CL_ConnectedToRemoteServer( void );
 // returns qtrue if connected to a remote server
 
-void CL_MissingDefaultCfg( void );
+void CL_MissingDefaultCfg( const char *gamedir );
 // connected to a remote server and is missing default.cfg for new fs_game
 
 void Key_KeynameCompletion( void(*callback)(const char *s) );
@@ -1216,6 +1223,14 @@ void SV_PacketEvent( netadr_t from, msg_t *msg );
 int SV_FrameMsec(void);
 int SV_SendQueuedPackets(void);
 
+//
+// input interface
+//
+void IN_Init( void *windowData );
+void IN_Frame( void );
+void IN_Shutdown( void );
+void IN_Restart( void );
+
 /*
 ==============================================================
 
@@ -1232,6 +1247,8 @@ void	* QDECL Sys_LoadGameDll( const char *name, intptr_t (QDECL **entryPoint)(in
 void	Sys_UnloadDll( void *dllHandle );
 
 qboolean Sys_DllExtension( const char *name );
+
+qboolean Sys_PathIsAbsolute( const char *path );
 
 char	*Sys_GetCurrentUser( void );
 
@@ -1369,9 +1386,9 @@ void	Huff_Decompress(msg_t *buf, int offset);
 void	Huff_Init(huffman_t *huff);
 void	Huff_addRef(huff_t* huff, byte ch);
 int		Huff_Receive (node_t *node, int *ch, byte *fin);
-void	Huff_transmit (huff_t *huff, int ch, byte *fout);
-void	Huff_offsetReceive (node_t *node, int *ch, byte *fin, int *offset);
-void	Huff_offsetTransmit (huff_t *huff, int ch, byte *fout, int *offset);
+void	Huff_transmit (huff_t *huff, int ch, byte *fout, int maxoffset);
+void	Huff_offsetReceive (node_t *node, int *ch, byte *fin, int *offset, int maxoffset);
+void	Huff_offsetTransmit (huff_t *huff, int ch, byte *fout, int *offset, int maxoffset);
 void	Huff_putBit( int bit, byte *fout, int *offset);
 int		Huff_getBit( byte *fout, int *offset);
 

@@ -23,6 +23,9 @@ endif
 ifndef BUILD_FINAL
   BUILD_FINAL      =0
 endif
+ifndef BUILD_AUTOUPDATER  # DON'T build unless you mean to!
+  BUILD_AUTOUPDATER=0
+endif
 
 #############################################################################
 #
@@ -89,7 +92,7 @@ endif
 export CROSS_COMPILING
 
 ifndef VERSION
-VERSION=0.4
+VERSION=0.5
 endif
 
 ifndef CLIENTBIN
@@ -106,7 +109,7 @@ APPBUNDLE=Spearmint.app
 endif
 
 ifndef RENDERER_PREFIX
-RENDERER_PREFIX=mint-renderer-
+RENDERER_PREFIX=spearmint-renderer-
 endif
 
 ifndef BASEGAME
@@ -222,6 +225,10 @@ ifndef SERVER_USE_RENDERER_DLOPEN
 SERVER_USE_RENDERER_DLOPEN=0
 endif
 
+ifndef USE_AUTOUPDATER  # DON'T include unless you mean to!
+USE_AUTOUPDATER=0
+endif
+
 ifndef DEBUG_CFLAGS
 DEBUG_CFLAGS=-ggdb -O0
 endif
@@ -247,35 +254,39 @@ VORBISDIR=$(MOUNT_DIR)/libvorbis-1.3.5
 OPUSDIR=$(MOUNT_DIR)/opus-1.1.4
 OPUSFILEDIR=$(MOUNT_DIR)/opusfile-0.8
 ZDIR=$(MOUNT_DIR)/zlib
-FTDIR=$(MOUNT_DIR)/freetype-2.7.1
+FTDIR=$(MOUNT_DIR)/freetype-2.8
+AUTOUPDATERSRCDIR=$(MOUNT_DIR)/autoupdater
+LIBTOMCRYPTSRCDIR=$(AUTOUPDATERSRCDIR)/rsa_tools/libtomcrypt-1.17
+TOMSFASTMATHSRCDIR=$(AUTOUPDATERSRCDIR)/rsa_tools/tomsfastmath-0.13.1
 NSISDIR=misc/nsis
 SDLHDIR=$(MOUNT_DIR)/SDL2
 LIBSDIR=$(MOUNT_DIR)/libs
 
 bin_path=$(shell which $(1) 2> /dev/null)
 
+# The autoupdater uses curl, so figure out its flags no matter what.
 # We won't need this if we only build the server
-ifneq ($(BUILD_CLIENT),0)
-  # set PKG_CONFIG_PATH to influence this, e.g.
-  # PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig
-  ifneq ($(call bin_path, pkg-config),)
-    CURL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags libcurl)
-    CURL_LIBS ?= $(shell pkg-config --silence-errors --libs libcurl)
-    OPENAL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags openal)
-    OPENAL_LIBS ?= $(shell pkg-config --silence-errors --libs openal)
-    SDL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags sdl2|sed 's/-Dmain=SDL_main//')
-    SDL_LIBS ?= $(shell pkg-config --silence-errors --libs sdl2)
-  else
-    # assume they're in the system default paths (no -I or -L needed)
-    CURL_LIBS ?= -lcurl
-    OPENAL_LIBS ?= -lopenal
-  endif
-  # Use sdl2-config if all else fails
-  ifeq ($(SDL_CFLAGS),)
-    ifneq ($(call bin_path, sdl2-config),)
-      SDL_CFLAGS ?= $(shell sdl2-config --cflags)
-      SDL_LIBS ?= $(shell sdl2-config --libs)
-    endif
+
+# set PKG_CONFIG_PATH to influence this, e.g.
+# PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig
+ifneq ($(call bin_path, pkg-config),)
+  CURL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags libcurl)
+  CURL_LIBS ?= $(shell pkg-config --silence-errors --libs libcurl)
+  OPENAL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags openal)
+  OPENAL_LIBS ?= $(shell pkg-config --silence-errors --libs openal)
+  SDL_CFLAGS ?= $(shell pkg-config --silence-errors --cflags sdl2|sed 's/-Dmain=SDL_main//')
+  SDL_LIBS ?= $(shell pkg-config --silence-errors --libs sdl2)
+else
+  # assume they're in the system default paths (no -I or -L needed)
+  CURL_LIBS ?= -lcurl
+  OPENAL_LIBS ?= -lopenal
+endif
+
+# Use sdl2-config if all else fails
+ifeq ($(SDL_CFLAGS),)
+  ifneq ($(call bin_path, sdl2-config),)
+    SDL_CFLAGS = $(shell sdl2-config --cflags)
+    SDL_LIBS = $(shell sdl2-config --libs)
   endif
 endif
 
@@ -355,9 +366,10 @@ ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu")
 
   THREAD_LIBS=-lpthread
   LIBS=-ldl -lm
+  AUTOUPDATER_LIBS += -ldl
 
   CLIENT_LIBS=$(SDL_LIBS)
-  RENDERER_LIBS = $(SDL_LIBS) -lGL
+  RENDERER_LIBS = $(SDL_LIBS)
 
   ifeq ($(USE_PORTABLE_RPATH),1)
     # $ is escaped using two, so this is litterly $ORIGIN
@@ -584,13 +596,15 @@ ifdef MINGW
     TOOLS_CC=$(CC)
   endif
 
-  LIBS= -lws2_32 -lwinmm -lpsapi
+  LIBS= -lws2_32 -lwinmm -lpsapi -lshlwapi
+  AUTOUPDATER_LIBS += -lwininet
+
   # clang 3.4 doesn't support this
   ifneq ("$(CC)", $(findstring "$(CC)", "clang" "clang++"))
     CLIENT_LDFLAGS += -mwindows
   endif
   CLIENT_LIBS = -lgdi32 -lole32
-  RENDERER_LIBS = -lgdi32 -lole32 -lopengl32
+  RENDERER_LIBS = -lgdi32 -lole32 -static-libgcc
 
   ifeq ($(USE_FREETYPE),1)
     ifneq ($(USE_INTERNAL_FREETYPE),1)
@@ -604,9 +618,9 @@ ifdef MINGW
       ifeq ($(USE_LOCAL_HEADERS),1)
         CLIENT_CFLAGS += -DCURL_STATICLIB
         ifeq ($(ARCH),x86_64)
-          CLIENT_LIBS += $(LIBSDIR)/win64/libcurl.a
+          CLIENT_LIBS += $(LIBSDIR)/win64/libcurl.a -lcrypt32
         else
-          CLIENT_LIBS += $(LIBSDIR)/win32/libcurl.a
+          CLIENT_LIBS += $(LIBSDIR)/win32/libcurl.a -lcrypt32
         endif
       else
         CLIENT_LIBS += $(CURL_LIBS)
@@ -678,7 +692,7 @@ ifeq ($(PLATFORM),freebsd)
   CLIENT_LIBS =
 
   CLIENT_LIBS += $(SDL_LIBS)
-  RENDERER_LIBS = $(SDL_LIBS) -lGL
+  RENDERER_LIBS = $(SDL_LIBS)
 
   # optional features/libraries
   ifeq ($(USE_OPENAL),1)
@@ -769,7 +783,7 @@ ifeq ($(PLATFORM),openbsd)
   CLIENT_LIBS =
 
   CLIENT_LIBS += $(SDL_LIBS)
-  RENDERER_LIBS = $(SDL_LIBS) -lGL
+  RENDERER_LIBS = $(SDL_LIBS)
 
   ifeq ($(USE_OPENAL),1)
     ifneq ($(USE_OPENAL_DLOPEN),1)
@@ -827,10 +841,12 @@ ifeq ($(PLATFORM),irix64)
   SHLIBLDFLAGS=-shared
 
   LIBS=-ldl -lm -lgen
+  AUTOUPDATER_LIBS += -ldl
+
   # FIXME: The X libraries probably aren't necessary?
   CLIENT_LIBS=-L/usr/X11/$(LIB) $(SDL_LIBS) \
     -lX11 -lXext -lm
-  RENDERER_LIBS = $(SDL_LIBS) -lGL
+  RENDERER_LIBS = $(SDL_LIBS)
 
 else # ifeq IRIX
 
@@ -881,11 +897,12 @@ ifeq ($(PLATFORM),sunos)
 
   THREAD_LIBS=-lpthread
   LIBS=-lsocket -lnsl -ldl -lm
+  AUTOUPDATER_LIBS += -ldl
 
   BOTCFLAGS=-O0
 
   CLIENT_LIBS +=$(SDL_LIBS) -lX11 -lXext -liconv -lm
-  RENDERER_LIBS = $(SDL_LIBS) -lGL
+  RENDERER_LIBS = $(SDL_LIBS)
 
 else # ifeq sunos
 
@@ -946,6 +963,16 @@ ifneq ($(BUILD_CLIENT),0)
       TARGETS += $(B)/$(CLIENTBIN)_opengl2$(FULLBINEXT)
     endif
   endif
+endif
+
+ifneq ($(BUILD_AUTOUPDATER),0)
+  # PLEASE NOTE that if you run an exe on Windows Vista or later
+  #  with "setup", "install", "update" or other related terms, it
+  #  will unconditionally trigger a UAC prompt, and in the case of
+  #  ioq3 calling CreateProcess() on it, it'll just fail immediately.
+  #  So don't call this thing "autoupdater" here!
+  AUTOUPDATER_BIN := autosyncerator$(FULLBINEXT)
+  TARGETS += $(B)/$(AUTOUPDATER_BIN)
 endif
 
 ifeq ($(USE_OPENAL),1)
@@ -1056,6 +1083,15 @@ ifeq ($(USE_FREETYPE),1)
   RENDERER_LIBS += $(FREETYPE_LIBS)
 endif
 
+ifeq ($(USE_AUTOUPDATER),1)
+  CLIENT_CFLAGS += -DUSE_AUTOUPDATER -DAUTOUPDATER_BIN=\\\"$(AUTOUPDATER_BIN)\\\"
+  SERVER_CFLAGS += -DUSE_AUTOUPDATER -DAUTOUPDATER_BIN=\\\"$(AUTOUPDATER_BIN)\\\"
+endif
+
+ifeq ($(BUILD_AUTOUPDATER),1)
+  AUTOUPDATER_LIBS += $(LIBTOMCRYPTSRCDIR)/libtomcrypt.a $(TOMSFASTMATHSRCDIR)/libtfm.a
+endif
+
 ifeq ("$(CC)", $(findstring "$(CC)", "clang" "clang++"))
   BASE_CFLAGS += -Qunused-arguments
 endif
@@ -1087,6 +1123,7 @@ endif
 
 BASE_CFLAGS += -DPRODUCT_VERSION=\\\"$(VERSION)\\\"
 BASE_CFLAGS += -DBASEGAME=\\\"$(BASEGAME)\\\"
+BASE_CFLAGS += -DRENDERER_PREFIX=\\\"$(RENDERER_PREFIX)\\\"
 BASE_CFLAGS += -Wformat=2 -Wno-format-zero-length -Wformat-security -Wno-format-nonliteral
 BASE_CFLAGS += -Wstrict-aliasing=2 -Wmissing-format-attribute
 BASE_CFLAGS += -Wdisabled-optimization
@@ -1116,7 +1153,7 @@ define DO_REF_STR
 $(echo_cmd) "REF_STR $<"
 $(Q)rm -f $@
 $(Q)echo "const char *fallbackShader_$(notdir $(basename $<)) =" >> $@
-$(Q)cat $< | sed 's/^/\"/;s/$$/\\n\"/' >> $@
+$(Q)cat $< | sed -e 's/^/\"/;s/$$/\\n\"/' -e 's/\r//g' >> $@
 $(Q)echo ";" >> $@
 endef
 
@@ -1234,6 +1271,9 @@ endif
 	@echo "  CLIENT_LIBS:"
 	$(call print_wrapped, $(CLIENT_LIBS))
 	@echo ""
+	@echo "  AUTOUPDATER_LIBS:"
+	$(call print_wrapped, $(AUTOUPDATER_LIBS))
+	@echo ""
 	@echo "  Output:"
 	$(call print_list, $(NAKED_TARGETS))
 	@echo ""
@@ -1259,6 +1299,7 @@ endif
 makedirs:
 	@if [ ! -d $(BUILD_DIR) ];then $(MKDIR) $(BUILD_DIR);fi
 	@if [ ! -d $(B) ];then $(MKDIR) $(B);fi
+	@if [ ! -d $(B)/autoupdater ];then $(MKDIR) $(B)/autoupdater;fi
 	@if [ ! -d $(B)/client ];then $(MKDIR) $(B)/client;fi
 	@if [ ! -d $(B)/client/opus ];then $(MKDIR) $(B)/client/opus;fi
 	@if [ ! -d $(B)/client/vorbis ];then $(MKDIR) $(B)/client/vorbis;fi
@@ -1266,6 +1307,26 @@ makedirs:
 	@if [ ! -d $(B)/renderergl2 ];then $(MKDIR) $(B)/renderergl2;fi
 	@if [ ! -d $(B)/renderergl2/glsl ];then $(MKDIR) $(B)/renderergl2/glsl;fi
 	@if [ ! -d $(B)/ded ];then $(MKDIR) $(B)/ded;fi
+
+
+#############################################################################
+# AUTOUPDATER
+#############################################################################
+
+define DO_AUTOUPDATER_CC
+$(echo_cmd) "AUTOUPDATER_CC $<"
+$(Q)$(CC) $(CFLAGS) -I$(LIBTOMCRYPTSRCDIR)/src/headers -I$(TOMSFASTMATHSRCDIR)/src/headers $(CURL_CFLAGS) -o $@ -c $<
+endef
+
+Q3AUTOUPDATEROBJ = \
+  $(B)/autoupdater/autoupdater.o
+
+$(B)/autoupdater/%.o: $(AUTOUPDATERSRCDIR)/%.c
+	$(DO_AUTOUPDATER_CC)
+
+$(B)/$(AUTOUPDATER_BIN): $(Q3AUTOUPDATEROBJ)
+	$(echo_cmd) "AUTOUPDATER_LD $@"
+	$(Q)$(CC) $(LDFLAGS) -o $@ $(Q3AUTOUPDATEROBJ) $(AUTOUPDATER_LIBS)
 
 
 #############################################################################
@@ -1346,22 +1407,6 @@ Q3OBJ = \
   $(B)/client/vm.o \
   $(B)/client/vm_interpreted.o \
   \
-  $(B)/client/be_aas_bspq3.o \
-  $(B)/client/be_aas_cluster.o \
-  $(B)/client/be_aas_debug.o \
-  $(B)/client/be_aas_entity.o \
-  $(B)/client/be_aas_file.o \
-  $(B)/client/be_aas_main.o \
-  $(B)/client/be_aas_move.o \
-  $(B)/client/be_aas_optimize.o \
-  $(B)/client/be_aas_reach.o \
-  $(B)/client/be_aas_route.o \
-  $(B)/client/be_aas_routealt.o \
-  $(B)/client/be_aas_sample.o \
-  $(B)/client/be_interface.o \
-  $(B)/client/l_crc.o \
-  $(B)/client/l_libvar.o \
-  $(B)/client/l_log.o \
   $(B)/client/l_memory.o \
   $(B)/client/l_precomp.o \
   $(B)/client/l_script.o \
@@ -1371,6 +1416,7 @@ Q3OBJ = \
   $(B)/client/sdl_snd.o \
   \
   $(B)/client/con_log.o \
+  $(B)/client/sys_autoupdater.o \
   $(B)/client/sys_main.o
 
 ifdef MINGW
@@ -1926,22 +1972,6 @@ Q3DOBJ = \
   $(B)/ded/vm.o \
   $(B)/ded/vm_interpreted.o \
   \
-  $(B)/ded/be_aas_bspq3.o \
-  $(B)/ded/be_aas_cluster.o \
-  $(B)/ded/be_aas_debug.o \
-  $(B)/ded/be_aas_entity.o \
-  $(B)/ded/be_aas_file.o \
-  $(B)/ded/be_aas_main.o \
-  $(B)/ded/be_aas_move.o \
-  $(B)/ded/be_aas_optimize.o \
-  $(B)/ded/be_aas_reach.o \
-  $(B)/ded/be_aas_route.o \
-  $(B)/ded/be_aas_routealt.o \
-  $(B)/ded/be_aas_sample.o \
-  $(B)/ded/be_interface.o \
-  $(B)/ded/l_crc.o \
-  $(B)/ded/l_libvar.o \
-  $(B)/ded/l_log.o \
   $(B)/ded/l_memory.o \
   $(B)/ded/l_precomp.o \
   $(B)/ded/l_script.o \
@@ -1952,6 +1982,7 @@ Q3DOBJ = \
   $(B)/ded/null_snddma.o \
   \
   $(B)/ded/con_log.o \
+  $(B)/ded/sys_autoupdater.o \
   $(B)/ded/sys_main.o
 
 ifneq ($(SERVER_USE_RENDERER_DLOPEN),1)
@@ -2079,7 +2110,7 @@ $(B)/client/%.o: $(SYSDIR)/%.c
 $(B)/client/%.o: $(SYSDIR)/%.m
 	$(DO_CC)
 
-$(B)/client/%.o: $(SYSDIR)/%.rc
+$(B)/client/win_resource.o: $(SYSDIR)/win_resource.rc $(SYSDIR)/win_manifest.xml
 	$(DO_WINDRES)
 
 
@@ -2197,7 +2228,7 @@ $(B)/ded/%.o: $(SYSDIR)/%.c
 $(B)/ded/%.o: $(SYSDIR)/%.m
 	$(DO_DED_CC)
 
-$(B)/ded/%.o: $(SYSDIR)/%.rc
+$(B)/ded/win_resource.o: $(SYSDIR)/win_resource.rc $(SYSDIR)/win_manifest.xml
 	$(DO_WINDRES)
 
 $(B)/ded/%.o: $(NDIR)/%.c

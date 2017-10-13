@@ -233,7 +233,7 @@ typedef struct {
 	int			downloadSize;	// how many bytes we got
 	char		downloadList[MAX_INFO_STRING]; // list of paks we need to download
 	qboolean	downloadRestart;	// if true, we need to do another FS_Restart because we downloaded a pak
-	qboolean	missingDefaultCfg;	// if true, fellback to last fs_game to attempt download because default.cfg was missing
+	char		missingDefaultCfg[MAX_OSPATH];	// if set, fellback to last fs_game to attempt download because default.cfg was missing
 
 	// demo information
 	char		demoName[MAX_OSPATH];
@@ -335,7 +335,6 @@ typedef struct {
 	qboolean	soundRegistered;
 	qboolean	cgameStarted;
 
-	qboolean	enteredMenu;
 	qboolean	printToCgame;			// enabled after restoring console text to cgame
 	bspFile_t	*cgameBsp;
 
@@ -364,6 +363,8 @@ typedef struct {
 	char		updateChallenge[MAX_TOKEN_CHARS];
 	char		updateInfoString[MAX_INFO_STRING];
 
+	netadr_t	rconAddress;
+
 	// rendering info
 	glconfig_t	glconfig;
 	qboolean	drawnLoadingScreen;
@@ -377,16 +378,18 @@ extern	qboolean	cl_oldGameSet;
 
 //=============================================================================
 
-#define DEMO_MAGIC "SPEARMINT_DEMO\0"
+// note: there is implicitly a '\0' byte added to the string literal
+#define DEMO_MAGIC "SPEARMINT_DEMO"
 
 typedef struct {
 	char	magic[15];
+	byte	padding; // align to 4-byte boundary, this in uninitialized data in older demos
 	int		headerSize;
 	int		protocol;
 
 	// treated as optional, assumed to exist based on headerSize
-	char	startTime[20]; // "YYYY-MM-DD HH:MM:SS\0"
-	char	endTime[20]; // "YYYY-MM-DD HH:MM:SS\0"
+	char	startTime[20]; // "YYYY-MM-DD HH:MM:SS" with null byte
+	char	endTime[20]; // "YYYY-MM-DD HH:MM:SS" with null byte
 	int		runTime; // Run time in milliseconds. Note: assumed to be directly after endTime when saving demo
 
 } demoHeader_t;
@@ -587,7 +590,6 @@ void CIN_CloseAllVideos(void);
 //
 void CL_InitCGame( void );
 void CL_ShutdownCGame( void );
-void CL_GameCommand( void );
 void CL_CGameRendering( stereoFrame_t stereo );
 void CL_ShowMainMenu( void );
 void CL_UpdateGlconfig( void );

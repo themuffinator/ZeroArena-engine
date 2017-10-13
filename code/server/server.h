@@ -259,6 +259,7 @@ typedef struct {
 	int			nextHeartbeatTime;
 	challenge_t	challenges[MAX_CHALLENGES];	// to prevent invalid IPs from connecting
 	netadr_t	redirectAddress;			// for rcon return messages
+	int			masterResolveTime[MAX_MASTER_SERVERS]; // next svs.time that server should do dns lookup for master server
 } serverStatic_t;
 
 #define SERVER_MAXBANS	1024
@@ -389,7 +390,7 @@ void SV_UserinfoChanged( player_t *cl );
 void SV_SetupPlayerEntity( player_t *player );
 void SV_PlayerEnterWorld( player_t *player, usercmd_t *cmd );
 void SV_FreePlayer( player_t *player );
-void SV_DropPlayer( player_t *drop, const char *reason );
+void SV_DropPlayer( player_t *drop, const char *reason, qboolean force );
 void SV_FreeClient( client_t *client );
 void SV_DropClient( client_t *drop, const char *reason );
 
@@ -434,7 +435,6 @@ sharedEntity_t *SV_GEntityForSvEntity( svEntity_t *svEnt );
 void		SV_InitGameProgs ( void );
 void		SV_ShutdownGameProgs ( void );
 void		SV_RestartGameProgs( void );
-void		SV_GameCommand( void );
 qboolean	SV_inPVS (const vec3_t p1, const vec3_t p2);
 
 //
@@ -448,7 +448,7 @@ void		SV_BotInitCvars(void);
 int			SV_BotLibSetup( void );
 int			SV_BotLibShutdown( void );
 int			SV_BotGetSnapshotEntity( int playerNum, int ent );
-int			SV_BotGetConsoleMessage( int playerNum, char *buf, int size );
+int			SV_BotGetServerCommand( int playerNum, char *buf, int size );
 
 int BotImport_DebugPolygonCreate(int color, int numPoints, vec3_t *points);
 void BotImport_DebugPolygonShow(int id, int color, int numPoints, vec3_t *points);

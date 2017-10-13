@@ -44,7 +44,7 @@ Suite 120, Rockville, Maryland 20850 USA.
 // List of demo protocols that are supported for playback.
 // Also plays protocol com_protocol
 int demo_protocols[] =
-{ PROTOCOL_VERSION, 5, 4, 3, 2, 0 };
+{ PROTOCOL_VERSION, 10, /* 6,7,8,9 were skipped */ 5, 4, 3, 2, 0 };
 
 #define MAX_NUM_ARGVS	50
 
@@ -109,14 +109,14 @@ cvar_t	*com_legacyprotocol;
 #endif
 cvar_t  *com_homepath;
 cvar_t	*com_busyWait;
+#ifndef DEDICATED
+cvar_t  *con_autochat;
+#endif
+cvar_t	*com_demoext;
 
 #ifdef USE_RENDERER_DLOPEN
 cvar_t	*com_renderer;
 static void	*rendererLib = NULL;
-#endif
-
-#ifndef DEDICATED
-cvar_t	*con_autochat;
 #endif
 
 #if idx64
@@ -547,7 +547,8 @@ qboolean Com_AddStartupCommands( void ) {
 		}
 
 		// if passed a demo filename without a command, try to play the demo
-		if ( COM_CompareExtension( Cmd_Argv(0), "." DEMOEXT ) ) {
+		// ZTM: TODO: Check for absolute path then open file and check for DEMO_MAGIC so it works with any demo extension?
+		if ( FS_IsDemoExt( Cmd_Argv(0), strlen( Cmd_Argv(0) ) ) ) {
 			Cbuf_AddText( "demo " );
 		}
 
@@ -1456,7 +1457,7 @@ Touch all known used data to make sure it is paged in
 void Com_TouchMemory( void ) {
 	int		start, end;
 	int		i, j;
-	int		sum;
+	unsigned	sum;
 	memblock_t	*block;
 
 	Z_CheckHeap();
@@ -2285,6 +2286,19 @@ void Com_QueueEvent( int time, sysEventType_t type, int value, int value2, int p
 {
 	sysEvent_t  *ev;
 
+	// combine mouse movement with previous mouse event
+	if ( type == SE_MOUSE && eventHead != eventTail )
+	{
+		ev = &eventQueue[ ( eventHead + MAX_QUEUED_EVENTS - 1 ) & MASK_QUEUED_EVENTS ];
+
+		if ( ev->evType == SE_MOUSE )
+		{
+			ev->evValue += value;
+			ev->evValue2 += value2;
+			return;
+		}
+	}
+
 	ev = &eventQueue[ eventHead & MASK_QUEUED_EVENTS ];
 
 	if ( eventHead - eventTail >= MAX_QUEUED_EVENTS )
@@ -2906,7 +2920,10 @@ void Com_Init( char *commandLine ) {
 
 	com_fs_pure = Cvar_Get ("fs_pure", "", CVAR_ROM);
 
-	com_homepath = Cvar_Get("com_homepath", "", CVAR_INIT);
+	com_homepath = Cvar_Get("com_homepath", HOMEPATH_NAME, CVAR_INIT);
+	if ( !com_homepath->string[0] ) {
+		Cvar_ForceReset( "com_homepath" );
+	}
 
 	FS_InitFilesystem ();
 
@@ -2984,7 +3001,7 @@ void Com_Init( char *commandLine ) {
 
 	s = va("%s %s %s", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
-	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO | CVAR_INIT);
+	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO);
 	com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
 #ifdef LEGACY_PROTOCOL
 	com_legacyprotocol = Cvar_Get("com_legacyprotocol", va("%i", PROTOCOL_LEGACY_VERSION), CVAR_INIT);
@@ -2996,8 +3013,10 @@ void Com_Init( char *commandLine ) {
 #endif
 		Cvar_Get("protocol", com_protocol->string, CVAR_ROM);
 
+	com_demoext = Cvar_Get("com_demoext", DEMOEXT, 0);
+
 #ifndef DEDICATED
-	con_autochat = Cvar_Get( "con_autochat", "0", CVAR_ARCHIVE );
+	con_autochat = Cvar_Get("con_autochat", "0", CVAR_ARCHIVE);
 #endif
 
 	Sys_Init();
@@ -3106,6 +3125,15 @@ void Com_ReadFromPipe( void )
 Com_RefMalloc
 ============
 */
+#ifdef ZONE_DEBUG
+void *Com_RefMalloc( int size, char *label, char *file, int line ) {
+	return Z_TagMallocDebug( size, TAG_RENDERER, label, file, line );
+}
+
+void Com_RefFree( void *pointer, char *label, char *file, int line ) {
+	Z_FreeDebug( pointer, label, file, line );
+}
+#else
 void *Com_RefMalloc( int size ) {
 	return Z_TagMalloc( size, TAG_RENDERER );
 }
@@ -3113,6 +3141,7 @@ void *Com_RefMalloc( int size ) {
 void Com_RefFree( void *pointer ) {
 	Z_Free( pointer );
 }
+#endif
 
 int Com_ScaledMilliseconds(void) {
 	return Sys_Milliseconds()*com_timescale->value;
@@ -3177,7 +3206,7 @@ void Com_ShutdownRef( void ) {
 Com_InitRef
 ============
 */
-void BotDrawDebugPolygons( void (*drawPoly)(int color, int numPoints, float *points) );
+void SV_BotDrawDebugPolygons( void (*drawPoly)(int color, int numPoints, float *points) );
 
 void Com_InitRef( refimport_t *ri ) {
 	refexport_t	*ret;
@@ -3229,8 +3258,13 @@ void Com_InitRef( refimport_t *ri ) {
 	ri->Printf = Com_RefPrintf;
 	ri->Error = Com_Error;
 	ri->Milliseconds = Com_ScaledMilliseconds;
+#ifdef ZONE_DEBUG
+	ri->MallocDebug = Com_RefMalloc;
+	ri->FreeDebug = Com_RefFree;
+#else
 	ri->Malloc = Com_RefMalloc;
 	ri->Free = Com_RefFree;
+#endif
 #ifdef HUNK_DEBUG
 	ri->Hunk_AllocDebug = Hunk_AllocDebug;
 #else
@@ -3241,7 +3275,7 @@ void Com_InitRef( refimport_t *ri ) {
 
 	ri->CM_ClusterPVS = CM_ClusterPVS;
 	ri->CM_DrawDebugSurface = CM_DrawDebugSurface;
-	ri->BotDrawDebugPolygons = BotDrawDebugPolygons;
+	ri->SV_BotDrawDebugPolygons = SV_BotDrawDebugPolygons;
 
 	ri->FS_ReadFile = FS_ReadFile;
 	ri->FS_FreeFile = FS_FreeFile;
@@ -3506,6 +3540,8 @@ void Com_Frame( void ) {
 			NET_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
 	
+	IN_Frame();
+
 	lastTime = com_frameTime;
 	com_frameTime = Com_EventLoop();
 	
@@ -3803,13 +3839,20 @@ Field_CompleteFilename
 void Field_CompleteFilename( const char *dir,
 		const char *ext, qboolean stripExt, qboolean allowNonPureFilesOnDisk )
 {
+	char **pFiles;
+	int nFiles;
+
 	matchCount = 0;
 	shortestMatch[ 0 ] = 0;
 
-	FS_FilenameCompletion( dir, ext, stripExt, FindMatches, allowNonPureFilesOnDisk );
+	pFiles = FS_GetFileList( dir, ext, &nFiles, allowNonPureFilesOnDisk );
+
+	FS_FilenameCompletion( pFiles, nFiles, stripExt, FindMatches, allowNonPureFilesOnDisk );
 
 	if( !Field_Complete( ) )
-		FS_FilenameCompletion( dir, ext, stripExt, PrintMatches, allowNonPureFilesOnDisk );
+		FS_FilenameCompletion( pFiles, nFiles, stripExt, PrintMatches, allowNonPureFilesOnDisk );
+
+	FS_FreeFileList( pFiles );
 }
 
 /*
@@ -3817,10 +3860,16 @@ void Field_CompleteFilename( const char *dir,
 Field_CompleteCommand
 ===============
 */
-void Field_CompleteCommand( char *cmd,
+void Field_CompleteCommand( const char *_cmd,
 		qboolean doCommands, qboolean doCvars )
 {
+	char	buffer[ BIG_INFO_STRING ], *cmd;
 	int		completionArgument = 0;
+
+	// _cmd shouldn't ever be changed but it's too much work to const-ify
+	// every where it goes so make a local copy
+	Q_strncpyz( buffer, _cmd, sizeof ( buffer ) );
+	cmd = buffer;
 
 	// Skip leading whitespace and quotes
 	cmd = Com_SkipCharset( cmd, " \"" );
@@ -3838,7 +3887,7 @@ void Field_CompleteCommand( char *cmd,
 		completionString = Cmd_Argv( completionArgument - 1 );
 
 #ifndef DEDICATED
-	// Add a '\' to the start of the buffer if it might be sent as chat otherwise
+	// add a '\' to the start of the buffer if it might be sent as chat otherwise
 	if( con_autochat->integer && completionField->buffer[ 0 ] &&
 			completionField->buffer[ 0 ] != '\\' )
 	{
@@ -3902,6 +3951,50 @@ void Field_CompleteCommand( char *cmd,
 				Cvar_CommandCompletion( PrintCvarMatches );
 		}
 	}
+}
+
+/*
+============
+Field_ListCompletion
+============
+*/
+static void Field_ListCompletion( const char *list, void(*callback)(const char *s) ) {
+	const char *itemname;
+
+	itemname = list;
+
+	while ( 1 ) {
+		if (itemname[0] == '\0')
+			break;
+
+		callback(itemname);
+
+		itemname += strlen(itemname) + 1;
+	}
+}
+
+/*
+===============
+Field_CompleteList
+
+List items are 0-byte terminated with an additonal 0-byte at the end of the list
+
+Example: "hello\0world\0"
+C-strings have an implicit trailing 0-byte so the memory is actually hello\0world\0\0
+===============
+*/
+void Field_CompleteList( const char *list )
+{
+	matchCount = 0;
+	shortestMatch[ 0 ] = 0;
+
+	if ( !list )
+		return;
+
+	Field_ListCompletion( list, FindMatches );
+
+	if( !Field_Complete( ) )
+		Field_ListCompletion( list, PrintMatches );
 }
 
 /*

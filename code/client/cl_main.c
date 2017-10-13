@@ -808,14 +808,14 @@ void CL_Record_f( void ) {
 	if ( Cmd_Argc() == 2 ) {
 		s = Cmd_Argv(1);
 		Q_strncpyz( demoName, s, sizeof( demoName ) );
-		Com_sprintf(name, sizeof(name), "demos/%s.%s", demoName, DEMOEXT);
+		Com_sprintf(name, sizeof(name), "demos/%s.%s", demoName, com_demoext->string);
 	} else {
 		int		number;
 
 		// scan for a free demo name
 		for ( number = 0 ; number <= 9999 ; number++ ) {
 			CL_DemoFilename( number, demoName, sizeof( demoName ) );
-			Com_sprintf(name, sizeof(name), "demos/%s.%s", demoName, DEMOEXT);
+			Com_sprintf(name, sizeof(name), "demos/%s.%s", demoName, com_demoext->string);
 
 			if (!FS_FileExists(name))
 				break;	// file doesn't exist
@@ -841,6 +841,7 @@ void CL_Record_f( void ) {
 	clc.demoRecordStartTime = Sys_Milliseconds();
 
 	// setup demo header
+	Com_Memset( &header, 0, sizeof ( header ) );
 	Com_Memcpy( header.magic, DEMO_MAGIC, sizeof ( header.magic ) );
 	header.headerSize = LittleLong( sizeof( header ) );
 
@@ -1079,7 +1080,7 @@ void CL_ReadDemoMessage( void ) {
 ====================
 CL_ValidDemoFile
 
-if demoName has demo extension checks OS path, otherwise checks game filesystem path.
+if demoName is an absolute path checks OS path, otherwise checks game filesystem path.
 
 if returns true, header looks ok and can probably play it (assuming correct cgame and pk3s).
 if returns false, can't play it.
@@ -1090,6 +1091,7 @@ if returns false and protocol > 0, it's a unsupported protocol.
 qboolean CL_ValidDemoFile( const char *demoName, int *pProtocol, int *pLength, fileHandle_t *pHandle, char *pStartTime, char *pEndTime, int *pRunTime ) {
 	demoHeader_t	header;
 	char			name[MAX_OSPATH];
+	char			dotdemoext[MAX_QPATH];
 	int				r, i;
 	int				length;
 	int				protocol;
@@ -1110,11 +1112,16 @@ qboolean CL_ValidDemoFile( const char *demoName, int *pProtocol, int *pLength, f
 		*pRunTime = 0;
 
 	// try OS path if has demo extension
-	if ( COM_CompareExtension( demoName, "." DEMOEXT ) ) {
+	if ( Sys_PathIsAbsolute( demoName ) ) {
 		length = FS_System_FOpenFileRead( demoName, &f );
 	} else {
 		// try game filesystem path
-		Com_sprintf( name, sizeof(name), "demos/%s." DEMOEXT, demoName );
+		Com_sprintf( name, sizeof(name), "demos/%s", demoName );
+
+		// add demo extension if none was specified
+		Com_sprintf( dotdemoext, sizeof(dotdemoext), ".%s", com_demoext->string );
+		COM_DefaultExtension( name, sizeof(name), dotdemoext );
+
 		length = FS_FOpenFileRead( name, &f, qtrue );
 	}
 
@@ -1200,7 +1207,11 @@ static void CL_CompleteDemoName( char *args, int argNum )
 {
 	if( argNum == 2 )
 	{
-		Field_CompleteFilename( "demos", "." DEMOEXT, qtrue, qtrue );
+		char dotdemoext[MAX_QPATH];
+
+		Com_sprintf( dotdemoext, sizeof (dotdemoext), ".%s", com_demoext->string );
+
+		Field_CompleteFilename( "demos", dotdemoext, qtrue, qtrue );
 	}
 }
 
@@ -1227,16 +1238,14 @@ void CL_PlayDemo( const char *demoName ) {
 
 	// open the demo file
 	if ( !CL_ValidDemoFile( demoName, &protocol, &clc.demoLength, &clc.demofile, startTime, endTime, &runTime ) ) {
-		if ( clc.demoLength <= 0 || clc.demofile == 0 ) {
-			Com_Printf( S_COLOR_YELLOW "WARNING: Couldn't open demo %s\n", demoName );
-			return;
+		if ( clc.demoLength <= 0 ) {
+			Com_Printf( "Couldn't open demo '%s'\n", demoName );
+		} else if ( protocol > 0 ) {
+			Com_Printf( "Demo '%s' uses unsupported protocol %d\n", demoName, protocol );
+		} else {
+			Com_Printf( "Invalid demo header in '%s'\n", demoName );
 		}
-		else if ( protocol > 0 ) {
-			Com_Error( ERR_DROP, "Demo %s uses unsupported protocol %d", demoName, protocol );
-		}
-		else {
-			Com_Error( ERR_DROP, "Invalid demo %s", demoName );
-		}
+		return;
 	}
 
 	Com_Printf( "Loading demo '%s' recorded from %s to %s (%d seconds)\n", demoName, startTime, endTime, runTime / 1000 );
@@ -1248,6 +1257,7 @@ void CL_PlayDemo( const char *demoName ) {
 	clc.state = CA_CONNECTED;
 	clc.demoplaying = qtrue;
 	Q_strncpyz( clc.servername, Sys_Basename( clc.demoName ), sizeof( clc.servername ) );
+	COM_StripExtension( clc.servername, clc.servername, sizeof( clc.servername ) );
 
 	SCR_UpdateScreen();
 
@@ -2025,6 +2035,7 @@ void CL_Rcon_f( void ) {
 	}
 	
 	NET_SendPacket (NS_CLIENT, strlen(message)+1, message, to);
+	cls.rconAddress = to;
 }
 
 /*
@@ -2198,14 +2209,14 @@ void CL_DownloadsComplete( void ) {
 		if( clc.cURLDisconnected ) {
 			if(clc.downloadRestart) {
 				clc.downloadRestart = qfalse;
-				clc.missingDefaultCfg = qfalse;
+				clc.missingDefaultCfg[0] = '\0';
 
 				FS_Restart( qfalse ); // We possibly downloaded a pak, restart the file system to load it
 				clc.fsRestarted = qtrue;
 
 				// still missing default.cfg after downloading files
-				if ( clc.missingDefaultCfg ) {
-					Com_Error( ERR_DROP, "Couldn't load default.cfg" );
+				if ( clc.missingDefaultCfg[0] ) {
+					Com_Error( ERR_DROP, "Couldn't load default.cfg for %s", clc.missingDefaultCfg );
 				}
 			}
 			clc.cURLDisconnected = qfalse;
@@ -2218,14 +2229,14 @@ void CL_DownloadsComplete( void ) {
 	// if we downloaded files we need to restart the file system
 	if (clc.downloadRestart) {
 		clc.downloadRestart = qfalse;
-		clc.missingDefaultCfg = qfalse;
+		clc.missingDefaultCfg[0] = '\0';
 
 		FS_Restart( qfalse ); // We possibly downloaded a pak, restart the file system to load it
 		clc.fsRestarted = qtrue;
 
 		// still missing default.cfg after downloading files
-		if ( clc.missingDefaultCfg ) {
-			Com_Error( ERR_DROP, "Couldn't load default.cfg" );
+		if ( clc.missingDefaultCfg[0] ) {
+			Com_Error( ERR_DROP, "Couldn't load default.cfg for %s", clc.missingDefaultCfg );
 		}
 
 		// inform the server so we get new gamestate info
@@ -2242,8 +2253,8 @@ void CL_DownloadsComplete( void ) {
 		clc.fsRestarted = qtrue;
 	}
 
-	if ( clc.missingDefaultCfg ) {
-		Com_Error( ERR_DROP, "Couldn't load default.cfg" );
+	if ( clc.missingDefaultCfg[0] ) {
+		Com_Error( ERR_DROP, "Couldn't load default.cfg for %s", clc.missingDefaultCfg );
 	}
 
 	// let the client game init and load data
@@ -2400,24 +2411,29 @@ and determine if we need to download them
 =================
 */
 void CL_InitDownloads(void) {
-  char missingfiles[1024];
+	char missingfiles[1024];
 
-  if ( !(cl_allowDownload->integer & DLF_ENABLE) )
-  {
-    // autodownload is disabled on the client
-    // but it's possible that some referenced files on the server are missing
-    if (FS_ComparePaks( missingfiles, sizeof( missingfiles ), qfalse ) )
-    {      
-      // NOTE TTimo I would rather have that printed as a modal message box
-      //   but at this point while joining the game we don't know wether we will successfully join or not
-      Com_Printf( "\nWARNING: You are missing some files referenced by the server:\n%s"
-                  "You might not be able to join the game\n"
-                  "Go to the setting menu to turn on autodownload, or get the file elsewhere\n\n", missingfiles );
-    }
-  }
-  else if ( FS_ComparePaks( clc.downloadList, sizeof( clc.downloadList ) , qtrue ) ) {
+	// it's possible that some referenced files on the server are missing
+	if ( FS_ComparePaks( missingfiles, sizeof( missingfiles ), qfalse ) )
+	{
+		// NOTE TTimo I would rather have that printed as a modal message box
+		//   but at this point while joining the game we don't know wether we will successfully join or not
+		Com_Printf( "\nWARNING: You are missing some files referenced by the server:\n%s", missingfiles );
 
-    Com_Printf("Need paks: %s\n", clc.downloadList );
+		if ( !(cl_allowDownload->integer & DLF_ENABLE) )
+		{
+			Com_Printf( "You might not be able to join the game\n"
+						"Go to the setting menu to turn on autodownload, or get the file elsewhere\n\n" );
+		}
+		else
+		{
+			Com_Printf( "You might not be able to join the game\n\n" );
+		}
+	}
+
+	if ( (cl_allowDownload->integer & DLF_ENABLE) && FS_ComparePaks( clc.downloadList, sizeof( clc.downloadList ) , qtrue ) ) {
+
+		Com_Printf("Need paks: %s\n", clc.downloadList );
 
 		if ( *clc.downloadList ) {
 			// if autodownloading is not enabled on the server
@@ -2443,8 +2459,8 @@ Client connected to a remote server and when changing fs_game found
 that it was missing default.cfg.
 =================
 */
-void CL_MissingDefaultCfg( void ) {
-	clc.missingDefaultCfg = qtrue;
+void CL_MissingDefaultCfg( const char *gamedir ) {
+	Q_strncpyz( clc.missingDefaultCfg, gamedir, sizeof ( clc.missingDefaultCfg ) );
 }
 
 /*
@@ -2599,7 +2615,7 @@ void CL_ServersResponsePacket( const netadr_t* from, msg_t *msg, qboolean extend
 	byte*			buffptr;
 	byte*			buffend;
 	
-	Com_DPrintf("CL_ServersResponsePacket\n");
+	Com_Printf("CL_ServersResponsePacket from %s\n", NET_AdrToStringwPort(*from));
 
 	if (cls.numglobalservers == -1) {
 		// state to detect lack of servers or lack of response
@@ -2855,7 +2871,10 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 
 	// echo request from server
 	if ( !Q_stricmp(c, "echo") ) {
-		NET_OutOfBandPrint( NS_CLIENT, from, "%s", Cmd_Argv(1) );
+		// NOTE: we may have to add exceptions for auth and update servers
+		if ( NET_CompareAdr( from, clc.serverAddress ) || NET_CompareAdr( from, cls.rconAddress ) ) {
+			NET_OutOfBandPrint( NS_CLIENT, from, "%s", Cmd_Argv(1) );
+		}
 		return;
 	}
 
@@ -2866,12 +2885,14 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	}
 
 	// echo request from server
-	if(!Q_stricmp(c, "print")){
-		s = MSG_ReadString( msg );
-		
-		Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
-		Com_Printf( "%s", s );
+	if ( !Q_stricmp(c, "print") ) {
+		// NOTE: we may have to add exceptions for auth and update servers
+		if ( NET_CompareAdr( from, clc.serverAddress ) || NET_CompareAdr( from, cls.rconAddress ) ) {
+			s = MSG_ReadString( msg );
 
+			Q_strncpyz( clc.serverMessage, s, sizeof( clc.serverMessage ) );
+			Com_Printf( "%s", s );
+		}
 		return;
 	}
 
@@ -3048,13 +3069,6 @@ void CL_Frame ( int msec ) {
 		}
 	}
 #endif
-
-	if ( clc.state == CA_DISCONNECTED && !cls.enteredMenu
-		&& !com_sv_running->integer && cgvm ) {
-		// if disconnected, bring up the menu
-		S_StopAllSounds();
-		CL_ShowMainMenu();
-	}
 
 	// if recording an avi, lock to a fixed fps
 	if ( CL_VideoRecording( ) && cl_aviFrameRate->integer && msec) {
@@ -4118,6 +4132,10 @@ void CL_LocalServers_f( void ) {
 /*
 ==================
 CL_GlobalServers_f
+
+Originally master 0 was Internet and master 1 was MPlayer.
+ioquake3 2008; added support for requesting five separate master servers using 0-4.
+ioquake3 2017; made master 0 fetch all master servers and 1-5 request a single master server.
 ==================
 */
 void CL_GlobalServers_f( void ) {
@@ -4125,13 +4143,36 @@ void CL_GlobalServers_f( void ) {
 	int			count, i, masterNum;
 	char		command[1024], *masteraddress;
 	
-	if ((count = Cmd_Argc()) < 3 || (masterNum = atoi(Cmd_Argv(1))) < 0 || masterNum > MAX_MASTER_SERVERS - 1)
+	if ((count = Cmd_Argc()) < 3 || (masterNum = atoi(Cmd_Argv(1))) < 0 || masterNum > MAX_MASTER_SERVERS)
 	{
-		Com_Printf("usage: globalservers <master# 0-%d> <protocol> [keywords]\n", MAX_MASTER_SERVERS - 1);
+		Com_Printf("usage: globalservers <master# 0-%d> <protocol> [keywords]\n", MAX_MASTER_SERVERS);
 		return;	
 	}
 
-	sprintf(command, "sv_master%d", masterNum + 1);
+	// request from all master servers
+	if ( masterNum == 0 ) {
+		int numAddress = 0;
+
+		for ( i = 1; i <= MAX_MASTER_SERVERS; i++ ) {
+			sprintf(command, "sv_master%d", i);
+			masteraddress = Cvar_VariableString(command);
+
+			if(!*masteraddress)
+				continue;
+
+			numAddress++;
+
+			Com_sprintf(command, sizeof(command), "globalservers %d %s %s\n", i, Cmd_Argv(2), Cmd_ArgsFrom(3));
+			Cbuf_AddText(command);
+		}
+
+		if ( !numAddress ) {
+			Com_Printf( "CL_GlobalServers_f: Error: No master server addresses.\n");
+		}
+		return;
+	}
+
+	sprintf(command, "sv_master%d", masterNum);
 	masteraddress = Cvar_VariableString(command);
 	
 	if(!*masteraddress)
@@ -4153,7 +4194,7 @@ void CL_GlobalServers_f( void ) {
 	else if(i == 2)
 		to.port = BigShort(PORT_MASTER);
 
-	Com_Printf("Requesting servers from master %s...\n", masteraddress);
+	Com_Printf("Requesting servers from %s (%s)...\n", masteraddress, NET_AdrToStringwPort(to));
 
 	cls.numglobalservers = -1;
 	cls.pingUpdateSource = AS_GLOBAL;

@@ -720,6 +720,9 @@ int main( int argc, char **argv )
 	int   i;
 	char  commandLine[ MAX_STRING_CHARS ] = { 0 };
 
+	extern void Sys_LaunchAutoupdater(int argc, char **argv);
+	Sys_LaunchAutoupdater(argc, argv);
+
 #ifndef DEDICATED
 	// SDL version check
 
@@ -780,10 +783,9 @@ int main( int argc, char **argv )
 		Q_strcat( commandLine, sizeof( commandLine ), " " );
 	}
 
+	CON_Init( );
 	Com_Init( commandLine );
 	NET_Init( );
-
-	CON_Init( );
 
 	signal( SIGILL, Sys_SigHandler );
 	signal( SIGFPE, Sys_SigHandler );
@@ -791,7 +793,7 @@ int main( int argc, char **argv )
 	signal( SIGTERM, Sys_SigHandler );
 	signal( SIGINT, Sys_SigHandler );
 
-#if !defined DEDICATED && !defined MACOS_X && !defined WIN32
+#if !defined DEDICATED && !defined __APPLE__ && !defined WIN32
 	// HACK: Before SDL 2.0.4, Linux (X11) did not set numlock or capslock state
 	//       so I made the engine always assumed num lock was on.
 	// NOTE: The SDL mod state on X11 is not set at this point even when it's fixed
@@ -807,7 +809,6 @@ int main( int argc, char **argv )
 
 	while( 1 )
 	{
-		IN_Frame( );
 		Com_Frame( );
 	}
 

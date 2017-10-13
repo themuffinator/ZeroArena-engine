@@ -580,6 +580,10 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 	// to load during actual gameplay
 	sv.state = SS_LOADING;
 
+	// update latched bot cvars
+	SV_BotInitCvars();
+	SV_BotInitBotLib();
+
 	// load and spawn all other entities
 	SV_InitGameProgs();
 
@@ -633,7 +637,7 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 				if ( denied && player != NULL ) {
 					// this generally shouldn't happen, because the client
 					// was connected before the level change
-					SV_DropPlayer( player, denied );
+					SV_DropPlayer( player, denied, qtrue );
 				}
 			}
 
@@ -681,17 +685,18 @@ void SV_SpawnServer( char *server, qboolean killBots ) {
 		}
 		p = FS_LoadedPakNames();
 		Cvar_Set( "sv_pakNames", p );
-
-		// if a dedicated pure server we need to touch the cgame because it could be in a
-		// seperate pk3 file and the client will need to load the latest cgame.qvm
-		if ( com_dedicated->integer ) {
-			SV_TouchCGame();
-		}
 	}
 	else {
 		Cvar_Set( "sv_paks", "" );
 		Cvar_Set( "sv_pakNames", "" );
 	}
+
+	// if a dedicated pure server we need to touch the cgame because it could be in a
+	// seperate pk3 file and the client will need to load the latest cgame.qvm
+	if ( com_dedicated->integer ) {
+		SV_TouchCGame();
+	}
+
 	// the server sends these to the clients so they can figure
 	// out which pk3s should be auto-downloaded
 	p = FS_ReferencedPakChecksums();
@@ -815,9 +820,6 @@ void SV_Init (void)
 	// initialize bot cvars so they are listed and can be set before loading the botlib
 	SV_BotInitCvars();
 
-	// init the botlib here because we need the pre-compiler in the UI
-	SV_BotInitBotLib();
-	
 	// Load saved bans
 	Cbuf_AddText("rehashbans\n");
 }
@@ -910,7 +912,14 @@ void SV_Shutdown( char *finalmsg ) {
 
 	Cvar_Set( "sv_running", "0" );
 	Cvar_Set("ui_singlePlayerActive", "0");
+#ifndef DEDICATED
+	// [client] There isn't good single player and multiplayer separation
+	// so don't leave game public after hosting a public server.
+	// [dedicated] sv_public isn't cleared for dedicated servers because
+	// they call shutdown after 23 days uptime and would stop reporting
+	// to the master servers.
 	Cvar_Set("sv_public", "0");
+#endif
 
 	Com_Printf( "---------------------------\n" );
 

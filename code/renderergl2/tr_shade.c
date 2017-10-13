@@ -73,7 +73,7 @@ R_BindAnimatedImageToTMU
 =================
 */
 static void R_BindAnimatedImageToTMU( textureBundle_t *bundle, int tmu ) {
-	int		index;
+	int64_t index;
 
 	if ( bundle->isVideoMap ) {
 		ri.CIN_RunCinematic(bundle->videoMapHandle);
@@ -89,7 +89,7 @@ static void R_BindAnimatedImageToTMU( textureBundle_t *bundle, int tmu ) {
 
 	// it is necessary to do this messy calc to make sure animations line up
 	// exactly with waveforms of the same frequency
-	index = ri.ftol(tess.shaderTime * bundle->imageAnimationSpeed * FUNCTABLE_SIZE);
+	index = tess.shaderTime * bundle->imageAnimationSpeed * FUNCTABLE_SIZE;
 	index >>= FUNCTABLE_SIZE2;
 
 	if ( index < 0 ) {
@@ -97,7 +97,11 @@ static void R_BindAnimatedImageToTMU( textureBundle_t *bundle, int tmu ) {
 	}
 
 	if ( bundle->loopingImageAnim ) {
-		index %= bundle->numImageAnimations;
+		// Windows x86 doesn't load renderer DLL with 64 bit modulus
+		//index %= bundle->numImageAnimations;
+		while ( index >= bundle->numImageAnimations ) {
+			index -= bundle->numImageAnimations;
+		}
 	} else if ( index >= bundle->numImageAnimations ) {
 		index = bundle->numImageAnimations-1;
 	}
@@ -128,6 +132,7 @@ static void DrawTris (shaderCommands_t *input) {
 		GLSL_SetUniformMat4(sp, UNIFORM_MODELVIEWPROJECTIONMATRIX, glState.modelviewProjection);
 		VectorSet4(color, 1, 1, 1, 1);
 		GLSL_SetUniformVec4(sp, UNIFORM_COLOR, color);
+		GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
 
 		R_DrawElements(input->numIndexes, input->firstIndex);
 	}
@@ -425,7 +430,6 @@ static void ProjectDlightTexture( void ) {
 		vector[3] = scale;
 		GLSL_SetUniformVec4(sp, UNIFORM_DLIGHTINFO, vector);
 
-		
 		GLSL_SetUniformFloat(sp, UNIFORM_INTENSITY, intensity);
 
 		if ( dl->dlshader ) {
@@ -436,6 +440,35 @@ static void ProjectDlightTexture( void ) {
 				shaderStage_t *stage = dls->stages[i];
 				R_BindAnimatedImageToTMU( &dls->stages[i]->bundle[0], TB_COLORMAP );
 				GL_State( stage->stateBits | GLS_DEPTHFUNC_EQUAL );
+
+				// alpha test function
+				switch ( stage->stateBits & GLS_ATEST_FUNC_BITS )
+				{
+					case GLS_ATEST_GREATER:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATER);
+						break;
+					case GLS_ATEST_LESS:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESS);
+						break;
+					case GLS_ATEST_GREATEREQUAL:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATEREQUAL);
+						break;
+					case GLS_ATEST_LESSEQUAL:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESSEQUAL);
+						break;
+					case GLS_ATEST_EQUAL:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_EQUAL);
+						break;
+					case GLS_ATEST_NOTEQUAL:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NOTEQUAL);
+						break;
+					default:
+						GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NONE);
+						break;
+				}
+
+				// alpha test reference value
+				GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, ( ( stage->stateBits & GLS_ATEST_REF_BITS ) >> GLS_ATEST_REF_SHIFT ) / 100.0f);
 
 				R_DrawElements(tess.numIndexes, tess.firstIndex);
 
@@ -457,6 +490,35 @@ static void ProjectDlightTexture( void ) {
 			else {
 				GL_State( GLS_ATEST_GT_0 | GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
 			}
+
+			// alpha test function
+			switch ( glState.glStateBits & GLS_ATEST_FUNC_BITS )
+			{
+				case GLS_ATEST_GREATER:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATER);
+					break;
+				case GLS_ATEST_LESS:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESS);
+					break;
+				case GLS_ATEST_GREATEREQUAL:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATEREQUAL);
+					break;
+				case GLS_ATEST_LESSEQUAL:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESSEQUAL);
+					break;
+				case GLS_ATEST_EQUAL:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_EQUAL);
+					break;
+				case GLS_ATEST_NOTEQUAL:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NOTEQUAL);
+					break;
+				default:
+					GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NONE);
+					break;
+			}
+
+			// alpha test reference value
+			GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, ( ( glState.glStateBits & GLS_ATEST_REF_BITS ) >> GLS_ATEST_REF_SHIFT ) / 100.0f);
 
 			R_DrawElements(tess.numIndexes, tess.firstIndex);
 
@@ -952,6 +1014,8 @@ static void ForwardDlight( void ) {
 		// include GLS_DEPTHFUNC_EQUAL so alpha tested surfaces don't add light
 		// where they aren't rendered
 		GL_State( GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
+		GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
+		GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, 0.0f);
 
 		GLSL_SetUniformMat4(sp, UNIFORM_MODELMATRIX, backEnd.or.transformMatrix);
 
@@ -1064,6 +1128,8 @@ static void ProjectPshadowVBOGLSL( void ) {
 		// include GLS_DEPTHFUNC_EQUAL so alpha tested surfaces don't add light
 		// where they aren't rendered
 		GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHFUNC_EQUAL );
+		GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
+		GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, 0.0f);
 
 		GL_BindToTMU( tr.pshadowMaps[l], TB_DIFFUSEMAP );
 
@@ -1201,6 +1267,8 @@ static void RB_FogPass( void ) {
 	} else {
 		GL_State( GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA );
 	}
+	GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
+	GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, 0.0f);
 
 	R_DrawElements(tess.numIndexes, tess.firstIndex);
 }
@@ -1405,6 +1473,36 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input )
 		}
 
 		GL_State( pStage->stateBits );
+
+		// alpha test function
+		switch ( pStage->stateBits & GLS_ATEST_FUNC_BITS )
+		{
+			case GLS_ATEST_GREATER:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATER);
+				break;
+			case GLS_ATEST_LESS:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESS);
+				break;
+			case GLS_ATEST_GREATEREQUAL:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_GREATEREQUAL);
+				break;
+			case GLS_ATEST_LESSEQUAL:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_LESSEQUAL);
+				break;
+			case GLS_ATEST_EQUAL:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_EQUAL);
+				break;
+			case GLS_ATEST_NOTEQUAL:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NOTEQUAL);
+				break;
+			default:
+				GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, U_ATEST_NONE);
+				break;
+		}
+
+		// alpha test reference value
+		GLSL_SetUniformFloat(sp, UNIFORM_ALPHATESTREF, ( ( pStage->stateBits & GLS_ATEST_REF_BITS ) >> GLS_ATEST_REF_SHIFT ) / 100.0f);
+
 
 		{
 			vec4_t baseColor;
@@ -1770,6 +1868,7 @@ static void RB_RenderShadowmap( shaderCommands_t *input )
 		GLSL_SetUniformFloat(sp, UNIFORM_LIGHTRADIUS, backEnd.viewParms.zFar);
 
 		GL_State( 0 );
+		GLSL_SetUniformInt(sp, UNIFORM_ALPHATEST, 0);
 
 		//
 		// do multitexture

@@ -51,10 +51,9 @@ typedef enum
 	IMGFLAG_NO_COMPRESSION = 0x0010,
 	IMGFLAG_NOLIGHTSCALE   = 0x0020,
 	IMGFLAG_CLAMPTOEDGE    = 0x0040,
-	IMGFLAG_SRGB           = 0x0080,
-	IMGFLAG_GENNORMALMAP   = 0x0100,
-	IMGFLAG_LIGHTMAP       = 0x0200,
-	IMGFLAG_PICMIP2        = 0x0400,
+	IMGFLAG_GENNORMALMAP   = 0x0080,
+	IMGFLAG_LIGHTMAP       = 0x0100,
+	IMGFLAG_PICMIP2        = 0x0200,
 } imgFlags_t;
 
 #define MIP_RAW_IMAGE ( IMGFLAG_MIPMAP | IMGFLAG_PICMIP )
@@ -150,8 +149,8 @@ extern	cvar_t	*r_fontForceAutoHint;
 
 qboolean	R_GetModeInfo( int *width, int *height, float *windowAspect, int mode );
 
-float R_NoiseGet4f( float x, float y, float z, float t );
-int R_RandomOn( float t );
+float R_NoiseGet4f( float x, float y, float z, double t );
+int R_RandomOn( double t );
 void  R_NoiseInit( void );
 
 void	R_LoadImage( const char *name, int *numLevels, textureLevel_t **pic );
@@ -170,6 +169,7 @@ qhandle_t RE_RegisterShaderFromImage(const char *name, int lightmapIndex, image_
 void R_InitFreeType( void );
 void R_DoneFreeType( void );
 void RE_RegisterFont(const char *fontName, int pointSize, float borderWidth, qboolean forceAutoHint, fontInfo_t *vmFont, int vmFontBufSize);
+void R_FontList_f( void );
 
 /*
 =============================================================
@@ -199,7 +199,7 @@ IMPLEMENTATION SPECIFIC FUNCTIONS
 ====================================================================
 */
 
-void		GLimp_Init( void );
+void		GLimp_Init( qboolean );
 void		GLimp_Shutdown( void );
 void		GLimp_EndFrame( void );
 

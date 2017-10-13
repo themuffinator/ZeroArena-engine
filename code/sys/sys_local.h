@@ -34,13 +34,7 @@ Suite 120, Rockville, Maryland 20850 USA.
 // Require a minimum version of SDL
 #define MINSDL_MAJOR 2
 #define MINSDL_MINOR 0
-#define MINSDL_PATCH 0
-
-// Input subsystem
-void IN_Init( void *windowData );
-void IN_Frame( void );
-void IN_Shutdown( void );
-void IN_Restart( void );
+#define MINSDL_PATCH 2
 
 // Console
 void CON_Shutdown( void );

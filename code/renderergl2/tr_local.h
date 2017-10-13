@@ -529,36 +529,13 @@ typedef struct shader_s {
 
 	void		(*optimalStageIteratorFunc)( void );
 
-  float clampTime;                                  // time this shader is clamped to
-  float timeOffset;                                 // current time offset for this shader
+  double clampTime;                                  // time this shader is clamped to
+  double timeOffset;                                 // current time offset for this shader
 
   struct shader_s *remappedShader;                  // current shader this one is remapped too
 
 	struct	shader_s	*next;
 } shader_t;
-
-static ID_INLINE qboolean ShaderRequiresCPUDeforms(const shader_t * shader)
-{
-	if(shader->numDeforms)
-	{
-		const deformStage_t *ds = &shader->deforms[0];
-
-		if (shader->numDeforms > 1)
-			return qtrue;
-
-		switch (ds->deformation)
-		{
-			case DEFORM_WAVE:
-			case DEFORM_BULGE:
-				return qfalse;
-
-			default:
-				return qtrue;
-		}
-	}
-
-	return qfalse;
-}
 
 enum
 {
@@ -754,7 +731,11 @@ typedef enum
 
 	UNIFORM_CUBEMAPINFO,
 
+	UNIFORM_ALPHATEST,
+
 	// new in spearmint
+	UNIFORM_ALPHATESTREF,
+
 	UNIFORM_INTENSITY,
 	UNIFORM_DIFFUSECOLOR,
 	UNIFORM_FOGTYPE,
@@ -765,6 +746,17 @@ typedef enum
 
 	UNIFORM_COUNT
 } uniform_t;
+
+// values for UNIFORM_ALPHATEST. 0-3 match ioquake3's opengl2 renderer.
+enum {
+	U_ATEST_NONE = 0,
+	U_ATEST_NOTEQUAL = 1,
+	U_ATEST_LESS = 2,
+	U_ATEST_GREATEREQUAL = 3,
+	U_ATEST_EQUAL,
+	U_ATEST_LESSEQUAL,
+	U_ATEST_GREATER,
+};
 
 // shaderProgram_t represents a pair of one
 // GLSL vertex and one GLSL fragment shader
@@ -800,7 +792,7 @@ typedef struct {
 	byte		areamask[MAX_MAP_AREA_BYTES];
 	qboolean	areamaskModified;	// qtrue if areamask changed since last scene
 
-	float		floatTime;			// tr.refdef.time / 1000.0
+	double		floatTime;			// tr.refdef.time / 1000.0
 
 	float		blurFactor;
 
@@ -820,6 +812,9 @@ typedef struct {
 
 	// maximum distance for the far clip plane
 	float			maxFarClip;
+
+	// fov for view weapon
+	float		weapon_fov_x, weapon_fov_y;
 
 	int			num_entities;
 	trRefEntity_t	*entities;
@@ -912,6 +907,7 @@ typedef struct {
 	int         targetFboLayer;
 	int         targetFboCubemapIndex;
 	float		fovX, fovY;
+	float		weaponFovX, weaponFovY;
 	float		projectionMatrix[16];
 	cplane_t	frustum[5];
 	vec3_t		visBounds[2];
@@ -947,7 +943,6 @@ typedef enum {
 	SF_IQM,
 	SF_FLARE,
 	SF_ENTITY,				// beams, rails, lightning, etc that can be determined by entity
-	SF_VAO_MESH,
 	SF_VAO_MDVMESH,
 
 	SF_NUM_SURFACE_TYPES,
@@ -1006,7 +1001,7 @@ typedef struct
 
 #define srfVert_t_cleared(x) srfVert_t (x) = {{0, 0, 0}, {0, 0}, {0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}}
 
-// srfBspSurface_t covers SF_GRID, SF_TRIANGLES, SF_POLY, and SF_VAO_MESH
+// srfBspSurface_t covers SF_GRID, SF_TRIANGLES, and SF_POLY
 typedef struct srfBspSurface_s
 {
 	surfaceType_t   surfaceType;
@@ -1028,13 +1023,6 @@ typedef struct srfBspSurface_s
 	// vertexes
 	int             numVerts;
 	srfVert_t      *verts;
-
-	// BSP VBO offsets
-	int             firstVert;
-	int             firstIndex;
-
-	// static render data
-	vao_t          *vao;
 	
 	// SF_GRID specific variables after here
 
@@ -1527,9 +1515,6 @@ typedef enum {
 // We can't change glConfig_t without breaking DLL/vms compatibility, so
 // store extensions we have here.
 typedef struct {
-	int openglMajorVersion;
-	int openglMinorVersion;
-
 	qboolean    intelGraphics;
 
 	qboolean	occlusionQuery;
@@ -1920,9 +1905,6 @@ extern	cvar_t	*r_skipBackEnd;
 
 extern	cvar_t	*r_anaglyphMode;
 
-extern  cvar_t  *r_mergeMultidraws;
-extern  cvar_t  *r_mergeLeafSurfaces;
-
 extern  cvar_t  *r_externalGLSL;
 
 extern  cvar_t  *r_hdr;
@@ -1970,6 +1952,7 @@ extern  cvar_t  *r_forceSunLightScale;
 extern  cvar_t  *r_forceSunAmbientScale;
 extern  cvar_t  *r_sunlightMode;
 extern  cvar_t  *r_drawSunRays;
+extern  cvar_t  *r_drawSunRaysOcclusionQuery;
 extern  cvar_t  *r_sunShadows;
 extern  cvar_t  *r_shadowFilter;
 extern  cvar_t  *r_shadowBlur;
@@ -2005,6 +1988,32 @@ extern cvar_t	*r_shadersDirectory;
 extern cvar_t	*r_surfaceFlagNoDraw;
 extern cvar_t	*r_colorize2DIdentity;
 extern cvar_t	*r_missingLightmapUseDiffuseLighting;
+
+//====================================================================
+
+static ID_INLINE qboolean ShaderRequiresCPUDeforms(const shader_t * shader)
+{
+	if(shader->numDeforms)
+	{
+		const deformStage_t *ds = &shader->deforms[0];
+
+		if (shader->numDeforms > 1)
+			return qtrue;
+
+		switch (ds->deformation)
+		{
+			case DEFORM_WAVE:
+			case DEFORM_BULGE:
+				// need CPU deforms at high level-times to avoid floating point percision loss
+				return ( backEnd.refdef.floatTime != (float)backEnd.refdef.floatTime );
+
+			default:
+				return qtrue;
+		}
+	}
+
+	return qfalse;
+}
 
 //====================================================================
 
@@ -2232,7 +2241,7 @@ typedef struct shaderCommands_s
 	//color4ub_t	constantColor255[SHADER_MAX_VERTEXES] QALIGN(16);
 
 	shader_t	*shader;
-	float		shaderTime;
+	double		shaderTime;
 	int			fogNum;
 	int         cubemapIndex;
 

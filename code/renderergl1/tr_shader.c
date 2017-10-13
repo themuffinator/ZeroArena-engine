@@ -37,7 +37,7 @@ static char *s_shaderText;
 // dynamically allocated memory if it is valid.
 static	shaderStage_t	stages[MAX_SHADER_STAGES];		
 static	shader_t		shader;
-static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS][NUM_TEXTURE_BUNDLES];
+static	texModInfo_t	texMods[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][TR_MAX_TEXMODS];
 static	image_t			*imageAnimations[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][MAX_IMAGE_ANIMATIONS];
 static	imgFlags_t		shader_picmipFlag;
 static	qboolean		shader_allowCompress;
@@ -1290,7 +1290,7 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 			}
 
 			if ( totalImages > MAX_IMAGE_ANIMATIONS ) {
-				ri.Printf( PRINT_WARNING, "WARNING: Ignoring excess images for '%s' (found %d, max is %d) in shader '%s'\n",
+				ri.Printf( PRINT_WARNING, "WARNING: ignoring excess images for '%s' (found %d, max is %d) in shader '%s'\n",
 						keyword, totalImages, MAX_IMAGE_ANIMATIONS, shader.name );
 			}
 		}
@@ -1306,6 +1306,8 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 			if (bundle->videoMapHandle != -1) {
 				bundle->isVideoMap = qtrue;
 				bundle->image[0] = tr.scratchImage[bundle->videoMapHandle];
+			} else {
+				ri.Printf( PRINT_WARNING, "WARNING: could not load '%s' for 'videoMap' keyword in shader '%s'\n", token, shader.name );
 			}
 		}
 		//

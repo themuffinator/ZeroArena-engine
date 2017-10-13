@@ -37,7 +37,7 @@ static char *s_shaderText;
 // dynamically allocated memory if it is valid.
 static	shaderStage_t	stages[MAX_SHADER_STAGES];		
 static	shader_t		shader;
-static	texModInfo_t	texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS][NUM_TEXTURE_BUNDLES];
+static	texModInfo_t	texMods[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][TR_MAX_TEXMODS];
 static	image_t			*imageAnimations[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][MAX_IMAGE_ANIMATIONS];
 static	imgFlags_t		shader_picmipFlag;
 static	qboolean		shader_allowCompress;
@@ -1347,7 +1347,7 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 			}
 
 			if ( totalImages > MAX_IMAGE_ANIMATIONS ) {
-				ri.Printf( PRINT_WARNING, "WARNING: Ignoring excess images for '%s' (found %d, max is %d) in shader '%s'\n",
+				ri.Printf( PRINT_WARNING, "WARNING: ignoring excess images for '%s' (found %d, max is %d) in shader '%s'\n",
 						keyword, totalImages, MAX_IMAGE_ANIMATIONS, shader.name );
 			}
 		}
@@ -1363,6 +1363,8 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 			if (bundle->videoMapHandle != -1) {
 				bundle->isVideoMap = qtrue;
 				bundle->image[0] = tr.scratchImage[bundle->videoMapHandle];
+			} else {
+				ri.Printf( PRINT_WARNING, "WARNING: could not load '%s' for 'videoMap' keyword in shader '%s'\n", token, shader.name );
 			}
 		}
 		//
@@ -3728,7 +3730,7 @@ static void CollapseStagesToLightall(shaderStage_t *diffuse,
 		{
 			char normalName[MAX_QPATH];
 			image_t *normalImg;
-			imgFlags_t normalFlags = (diffuseImg->flags & ~(IMGFLAG_GENNORMALMAP | IMGFLAG_SRGB)) | IMGFLAG_NOLIGHTSCALE;
+			imgFlags_t normalFlags = (diffuseImg->flags & ~IMGFLAG_GENNORMALMAP) | IMGFLAG_NOLIGHTSCALE;
 
 			// ZTM: FIXME: check shader_allowCompress? I don't think it's always valid here though.
 
@@ -3775,7 +3777,7 @@ static void CollapseStagesToLightall(shaderStage_t *diffuse,
 		{
 			char specularName[MAX_QPATH];
 			image_t *specularImg;
-			imgFlags_t specularFlags = (diffuseImg->flags & ~(IMGFLAG_GENNORMALMAP | IMGFLAG_SRGB)) | IMGFLAG_NOLIGHTSCALE;
+			imgFlags_t specularFlags = (diffuseImg->flags & ~IMGFLAG_GENNORMALMAP) | IMGFLAG_NOLIGHTSCALE;
 
 			COM_StripExtension(diffuseImg->imgName, specularName, MAX_QPATH);
 			Q_strcat(specularName, MAX_QPATH, "_s");
@@ -4762,9 +4764,7 @@ static shader_t *FinishShader( void ) {
 	//
 	// look for multitexture potential
 	//
-	if ( qglActiveTextureARB ) {
-		stage = CollapseStagesToGLSL();
-	}
+	stage = CollapseStagesToGLSL();
 
 	if ( shader.lightmapIndex >= 0 && !hasLightmapStage ) {
 		if (vertexLightmap) {

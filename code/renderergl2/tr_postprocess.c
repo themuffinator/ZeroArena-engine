@@ -90,7 +90,7 @@ void RB_ToneMap(FBO_t *hdrFbo, ivec4_t hdrBox, FBO_t *ldrFbo, ivec4_t ldrBox, in
 	// tonemap
 	color[0] =
 	color[1] =
-	color[2] = pow(2, r_cameraExposure->value); //exp2(r_cameraExposure->value);
+	color[2] = pow(2, r_cameraExposure->value - autoExposure); //exp2(r_cameraExposure->value);
 	color[3] = 1.0f;
 
 	if (autoExposure)
@@ -276,7 +276,7 @@ static void RB_RadialBlur(FBO_t *srcFbo, FBO_t *dstFbo, int passes, float stretc
 static qboolean RB_UpdateSunFlareVis(void)
 {
 	GLuint sampleCount = 0;
-	if (!glRefConfig.occlusionQuery)
+	if (!glRefConfig.occlusionQuery || !r_drawSunRaysOcclusionQuery->integer)
 		return qtrue;
 
 	tr.sunFlareQueryIndex ^= 1;
@@ -312,6 +312,9 @@ void RB_SunRays(FBO_t *srcFbo, ivec4_t srcBox, FBO_t *dstFbo, ivec4_t dstBox)
 //	float w, h, w2, h2;
 	mat4_t mvp;
 	vec4_t pos, hpos;
+
+	if (r_forceSunScale->value <= 0 && tr.sunShaderScale <= 0)
+		return;
 
 	dot = DotProduct(tr.sunDirection, backEnd.viewParms.or.axis[0]);
 	if (dot < cutoff)
