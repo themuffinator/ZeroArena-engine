@@ -206,7 +206,7 @@ static void RB_SurfaceSprite( void ) {
 			break;
 
 		default:
-			Com_Error( ERR_DROP, "Unhandled spriteGen %d", tess.shader->spriteGen );
+			ri.Error( ERR_DROP, "Unhandled spriteGen %d", tess.shader->spriteGen );
 			break;
 	}
 
@@ -418,17 +418,17 @@ static void RB_SurfaceFoliage( srfFoliage_t *srf ) {
 
 			// set color
 			a = alpha > 1.0f ? 255 : alpha * 255;
-#if __MACOS__ // LBO 3/15/05. Byte-swap fix for Mac - alpha is in the LSB.
-			srcColor = ( *( (int*) instance->color ) & 0xFFFFFF00 ) | ( a & 0xff );
+#ifdef Q3_BIG_ENDIAN // LBO 3/15/05. Byte-swap fix for Mac - alpha is in the LSB.
+			srcColor = ( *( (int*) instance->color ) & 0xFFFFFF00 ) | ( a & 0xFF );
 #else
-			srcColor = ( *( (int*) instance->color ) & 0xFFFFFF ) | ( a << 24 );
+			srcColor = ( *( (int*) instance->color ) & 0x00FFFFFF ) | ( a << 24 );
 #endif
 		} else
 		{
 			srcColor = *( (int*) instance->color );
 		}
 
-		// Com_Printf( "Color: %d %d %d %d\n", srf->colors[ o ][ 0 ], srf->colors[ o ][ 1 ], srf->colors[ o ][ 2 ], alpha );
+		// ri.Printf( PRINT_ALL, "Color: %d %d %d %d\n", srf->colors[ o ][ 0 ], srf->colors[ o ][ 1 ], srf->colors[ o ][ 2 ], alpha );
 
 		RB_CHECKOVERFLOW( numVerts, numIndexes );
 
@@ -492,7 +492,7 @@ static void VectorArrayNormalize(vec4_t *normals, unsigned int count)
         
         // Vanilla PPC code, but since PPC has a reciprocal square root estimate instruction,
         // runs *much* faster than calling sqrt().  We'll use a single Newton-Raphson
-        // refinement step to get a little more precision.  This seems to yeild results
+        // refinement step to get a little more precision.  This seems to yield results
         // that are correct to 3 decimal places and usually correct to at least 4 (sometimes 5).
         // (That is, for the given input range of about 0.6 to 2.0).
         do {
@@ -767,7 +767,7 @@ static void LerpMeshVertexes(md3Surface_t *surf, float backlerp)
 {
 #if idppc_altivec
 	if (com_altivec->integer) {
-		// must be in a seperate function or G3 systems will crash.
+		// must be in a separate function or G3 systems will crash.
 		LerpMeshVertexes_altivec( surf, backlerp );
 		return;
 	}

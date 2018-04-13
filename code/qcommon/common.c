@@ -58,7 +58,7 @@ int demo_protocols[] =
 int		com_argc;
 char	*com_argv[MAX_NUM_ARGVS+1];
 
-jmp_buf abortframe;		// an ERR_DROP occured, exit the entire frame
+jmp_buf abortframe;		// an ERR_DROP occurred, exit the entire frame
 
 
 FILE *debuglogfile;
@@ -180,7 +180,7 @@ void Com_EndRedirect (void)
 Com_Printf
 
 Both client and server can use this, and it will output
-to the apropriate place.
+to the appropriate place.
 
 A raw string should NEVER be passed as fmt, because of "%f" type crashers.
 =============
@@ -388,7 +388,7 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 Com_Quit_f
 
 Both client and server can use this, and it will
-do the apropriate things.
+do the appropriate things.
 =============
 */
 void Com_Quit_f( void ) {
@@ -416,7 +416,7 @@ void Com_Quit_f( void ) {
 
 COMMAND LINE FUNCTIONS
 
-+ characters seperate the commandLine string into multiple console
++ characters separate the commandLine string into multiple console
 command lines.
 
 All of these are valid:
@@ -522,7 +522,7 @@ void Com_StartupVariable( const char *match ) {
 Com_AddStartupCommands
 
 Adds command line parameters as script statements
-Commands are seperated by + signs
+Commands are separated by + signs
 
 Returns qtrue if any late commands were added, which
 will keep the demoloop from immediately starting
@@ -817,15 +817,15 @@ typedef struct {
 } memzone_t;
 
 // main zone for all "dynamic" memory allocation
-memzone_t	*mainzone;
+static memzone_t	*mainzone;
 // we also have a small zone for small allocations that would only
 // fragment the main zone (think of cvar and cmd strings)
-memzone_t	*smallzone;
+static memzone_t	*smallzone;
 // zones for Game / CGame VM "dynamic" memory allocation
-memzone_t	*vm_gamezone;
-memzone_t	*vm_cgamezone;
+static memzone_t	*vm_gamezone;
+static memzone_t	*vm_cgamezone;
 
-void Z_CheckHeap( void );
+static void Z_CheckHeap( void );
 
 /*
 ========================
@@ -868,10 +868,31 @@ const char *Z_NameForZone( memzone_t *zone ) {
 
 /*
 ========================
+Z_CvarNameForZone
+========================
+*/
+const char *Z_CvarNameForZone( memzone_t *zone ) {
+	if ( !zone ) {
+		return NULL;
+	} else if ( zone == mainzone ) {
+		return "com_zoneMegs";
+	} else if ( zone == smallzone ) {
+		return NULL;
+	} else if ( zone == vm_gamezone ) {
+		return "vm_gameHeapMegs";
+	} else if ( zone == vm_cgamezone ) {
+		return "vm_cgameHeapMegs";
+	} else {
+		return NULL;
+	}
+}
+
+/*
+========================
 Z_ClearZone
 ========================
 */
-void Z_ClearZone( memzone_t *zone, int size ) {
+static void Z_ClearZone( memzone_t *zone, int size ) {
 	memblock_t	*block;
 	
 	// set the entire zone to one free block
@@ -896,7 +917,7 @@ void Z_ClearZone( memzone_t *zone, int size ) {
 Z_AvailableZoneMemory
 ========================
 */
-int Z_AvailableZoneMemory( memzone_t *zone ) {
+static int Z_AvailableZoneMemory( memzone_t *zone ) {
 	return zone->size - zone->used;
 }
 
@@ -1058,14 +1079,25 @@ void *Z_TagMalloc( int size, int tag ) {
 	do {
 		if (rover == start)	{
 			// scaned all the way around the list
+			char cvarMessage[128];
+			const char *cvarName;
+
+			// display user friendly message for overly common error
+			cvarName = Z_CvarNameForZone(zone);
+			if (cvarName) {
+				Com_sprintf(cvarMessage, sizeof(cvarMessage), " (increase %s cvar value, current value %s)", cvarName, Cvar_VariableString(cvarName));
+			} else {
+				cvarMessage[0] = '\0';
+			}
+
 #ifdef ZONE_DEBUG
 			Z_LogHeap();
 
-			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone: %s, line: %d (%s)",
-								size, Z_NameForZone(zone), file, line, label);
+			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone%s: %s, line: %d (%s)",
+								size, Z_NameForZone(zone), cvarMessage, file, line, label);
 #else
-			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone",
-								size, Z_NameForZone(zone));
+			Com_Error(ERR_FATAL, "Z_Malloc: failed on allocation of %i bytes from the %s zone%s",
+								size, Z_NameForZone(zone), cvarMessage);
 #endif
 			return NULL;
 		}
@@ -1152,7 +1184,7 @@ void *S_Malloc( int size ) {
 Z_CheckHeap
 ========================
 */
-void Z_CheckHeap( void ) {
+static void Z_CheckHeap( void ) {
 	memblock_t	*block;
 	
 	for (block = mainzone->blocklist.next ; ; block = block->next) {
@@ -1285,7 +1317,7 @@ char *CopyString( const char *in ) {
 ==============================================================================
 
 Goals:
-	reproducable without history effects -- no out of memory errors on weird map to map changes
+	reproducible without history effects -- no out of memory errors on weird map to map changes
 	allow restarting of the client without fragmentation
 	minimize total pages in use at run time
 	minimize total pages needed during load time
@@ -1822,9 +1854,9 @@ void *Hunk_Alloc( int size, ha_pref preference ) {
 		Hunk_Log();
 		Hunk_SmallLog();
 
-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i: %s, line: %d (%s)", size, file, line, label);
+		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i bytes (increase com_hunkMegs cvar value, current value %d): %s, line: %d (%s)", size, Cvar_VariableIntegerValue("com_hunkMegs"), file, line, label);
 #else
-		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i", size);
+		Com_Error(ERR_DROP, "Hunk_Alloc failed on %i bytes (increase com_hunkMegs cvar value, current value %d)", size, Cvar_VariableIntegerValue("com_hunkMegs"));
 #endif
 	}
 
@@ -1884,7 +1916,7 @@ void *Hunk_AllocateTempMemory( int size ) {
 	size = PAD(size, sizeof(intptr_t)) + sizeof( hunkHeader_t );
 
 	if ( hunk_temp->temp + hunk_permanent->permanent + size > s_hunkTotal ) {
-		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i", size );
+		Com_Error( ERR_DROP, "Hunk_AllocateTempMemory: failed on %i bytes (increase com_hunkMegs cvar value, current value %d)", size, Cvar_VariableIntegerValue( "com_hunkMegs" ) );
 	}
 
 	if ( hunk_temp == &hunk_low ) {
@@ -2920,7 +2952,7 @@ void Com_Init( char *commandLine ) {
 
 	com_fs_pure = Cvar_Get ("fs_pure", "", CVAR_ROM);
 
-	com_homepath = Cvar_Get("com_homepath", HOMEPATH_NAME, CVAR_INIT);
+	com_homepath = Cvar_Get("com_homepath", HOMEPATH_NAME, CVAR_INIT|CVAR_PROTECTED);
 	if ( !com_homepath->string[0] ) {
 		Cvar_ForceReset( "com_homepath" );
 	}
@@ -3001,6 +3033,14 @@ void Com_Init( char *commandLine ) {
 
 	s = va("%s %s %s", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
+
+	// version string without platform and no compile date if version includes git commit date and hash
+#ifdef PRODUCT_VERSION_HAS_DATE
+	Cvar_Get ("versionshort", PRODUCT_NAME " " PRODUCT_VERSION, CVAR_ROM );
+#else
+	Cvar_Get ("versionshort", PRODUCT_NAME " " PRODUCT_VERSION " " PRODUCT_DATE, CVAR_ROM );
+#endif
+
 	com_gamename = Cvar_Get("com_gamename", GAMENAME_FOR_MASTER, CVAR_SERVERINFO);
 	com_protocol = Cvar_Get("com_protocol", va("%i", PROTOCOL_VERSION), CVAR_SERVERINFO | CVAR_INIT);
 #ifdef LEGACY_PROTOCOL

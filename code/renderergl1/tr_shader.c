@@ -40,6 +40,7 @@ static	shader_t		shader;
 static	texModInfo_t	texMods[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][TR_MAX_TEXMODS];
 static	image_t			*imageAnimations[MAX_SHADER_STAGES][NUM_TEXTURE_BUNDLES][MAX_IMAGE_ANIMATIONS];
 static	imgFlags_t		shader_picmipFlag;
+static	qboolean		shader_novlcollapse;
 static	qboolean		shader_allowCompress;
 static	qboolean		stage_ignore;
 
@@ -54,6 +55,8 @@ static	shader_t*		hashTable[FILE_HASH_SIZE];
 
 #define MAX_SHADERTEXT_HASH		2048
 static char **shaderTextHashTable[MAX_SHADERTEXT_HASH];
+
+static void ClearShaderStage( int num );
 
 /*
 ================
@@ -1446,6 +1449,13 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 		else if ( !Q_stricmp( token, "detail" ) )
 		{
 			stage->isDetail = qtrue;
+
+			// ditch this stage if it's detail and detail textures are disabled
+			if ( !r_detailTextures->integer ) {
+				stage_ignore = qtrue;
+			} else if ( r_detailTextures->integer >= 2 ) {
+				stage_noPicMip = qtrue;
+			}
 		}
 		//
 		// fog
@@ -1771,6 +1781,29 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 			continue;
 		}
 		//
+		// depthTest disable
+		//
+		else if ( !Q_stricmp( token, "depthTest" ) )
+		{
+			token = COM_ParseExt( text, qfalse );
+			if ( token[0] == 0 )
+			{
+				ri.Printf( PRINT_WARNING, "WARNING: missing depthTest parameter in shader '%s'\n", shader.name );
+				continue;
+			}
+
+			if ( !Q_stricmp( token, "disable" ) )
+			{
+				depthTestBits = GLS_DEPTHTEST_DISABLE;
+			}
+			else
+			{
+				depthTestBits = 0;
+				ri.Printf( PRINT_WARNING, "WARNING: unknown depthTest parameter '%s' in shader '%s'\n", token, shader.name );
+			}
+			continue;
+		}
+		//
 		// nextbundle
 		//
 		else if ( !Q_stricmp( token, "nextbundle" ) )
@@ -1843,6 +1876,12 @@ static qboolean ParseStage( shaderStage_t *stage, char **text, int *ifIndent )
 		for ( i = 0; i < num; i++ )
 		{
 			imgFlags_t flags = IMGFLAG_NONE;
+
+			// don't load the images if the stage isn't going to be used
+			if ( stage_ignore ) {
+				bundle->image[i] = tr.defaultImage;
+				continue;
+			}
 
 			if (!stage_noMipMaps)
 				flags |= IMGFLAG_MIPMAP;
@@ -2345,8 +2384,13 @@ static qboolean ParseShader( char **text )
 			{
 				return qfalse;
 			}
-			stages[s].active = !stage_ignore;
-			s++;
+
+			if ( stage_ignore ) {
+				ClearShaderStage( s );
+			} else {
+				stages[s].active = qtrue;
+				s++;
+			}
 
 			// Don't skip data after the }
 			skipRestOfLine = qfalse;
@@ -2938,6 +2982,11 @@ static qboolean ParseShader( char **text )
 
 			ri.Printf( PRINT_WARNING, "WARNING: hitMaterial keyword is unsupported, '%s' in '%s'\n", token, shader.name );
 		}
+		// novlcollapse
+		else if ( !Q_stricmp( token, "novlcollapse" ) ) {
+			shader_novlcollapse = qtrue;
+			continue;
+		}
 		// unknown directive
 		else
 		{
@@ -3390,7 +3439,7 @@ static shader_t *GeneratePermanentShader( void ) {
 VertexLightingCollapse
 
 If vertex lighting is enabled, only render a single
-pass, trying to guess which is the correct one to best aproximate
+pass, trying to guess which is the correct one to best approximate
 what it is supposed to look like.
 =================
 */
@@ -3627,6 +3676,23 @@ static void InitShader( const char *name, int lightmapIndex ) {
 }
 
 /*
+===============
+ClearShaderStage
+===============
+*/
+static void ClearShaderStage( int num ) {
+	int b;
+
+	Com_Memset( &stages[num], 0, sizeof( stages[0] ) );
+
+	for ( b = 0; b < NUM_TEXTURE_BUNDLES; b++ ) {
+		stages[num].bundle[b].texMods = texMods[num][b];
+		stages[num].bundle[b].image = imageAnimations[num][b];
+		stages[num].bundle[b].image[0] = NULL;
+	}
+}
+
+/*
 =========================
 FinishShader
 
@@ -3686,32 +3752,6 @@ static shader_t *FinishShader( void ) {
 			ri.Printf( PRINT_WARNING, "Shader %s has a stage with no image\n", shader.name );
 			pStage->active = qfalse;
 			stage++;
-			continue;
-		}
-
-		//
-		// ditch this stage if it's detail and detail textures are disabled
-		//
-		if ( pStage->isDetail && !r_detailTextures->integer )
-		{
-			int index;
-			
-			for(index = stage + 1; index < MAX_SHADER_STAGES; index++)
-			{
-				if(!stages[index].active)
-					break;
-			}
-			
-			if(index < MAX_SHADER_STAGES)
-				memmove(pStage, pStage + 1, sizeof(*pStage) * (index - stage));
-			else
-			{
-				if(stage + 1 < MAX_SHADER_STAGES)
-					memmove(pStage, pStage + 1, sizeof(*pStage) * (index - stage - 1));
-				
-				Com_Memset(&stages[index - 1], 0, sizeof(*stages));
-			}
-			
 			continue;
 		}
 
@@ -3811,7 +3851,7 @@ static shader_t *FinishShader( void ) {
 	//
 	// if we are in r_vertexLight mode, never use a lightmap texture
 	//
-	if ( stage > 1 && r_vertexLight->integer && hasLightmapStage ) {
+	if ( stage > 1 && r_vertexLight->integer && hasLightmapStage && !shader_novlcollapse ) {
 		VertexLightingCollapse();
 		stage = 1;
 		hasLightmapStage = qfalse;
@@ -4014,18 +4054,18 @@ be defined for every single image used in the game, three default
 shader behaviors can be auto-created for any image:
 
 If lightmapIndex == LIGHTMAP_NONE, then the image will have
-dynamic diffuse lighting applied to it, as apropriate for most
+dynamic diffuse lighting applied to it, as appropriate for most
 entity skin surfaces.
 
 If lightmapIndex == LIGHTMAP_2D, then the image will be used
 for 2D rendering unless an explicit shader is found
 
 If lightmapIndex == LIGHTMAP_BY_VERTEX, then the image will use
-the vertex rgba modulate values, as apropriate for misc_model
+the vertex rgba modulate values, as appropriate for misc_model
 pre-lit surfaces.
 
 Other lightmapIndex values will have a lightmap stage created
-and src*dest blending applied with the texture, as apropriate for
+and src*dest blending applied with the texture, as appropriate for
 most world construction surfaces.
 
 ===============
@@ -4071,6 +4111,7 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, imgFlags_t rawImage
 	InitShader( strippedName, lightmapIndex );
 
 	shader_picmipFlag = IMGFLAG_PICMIP;
+	shader_novlcollapse = qfalse;
 
 	if ( r_ext_compressed_textures->integer == 2 ) {
 		// if the shader hasn't specifically asked for it, don't allow compression
@@ -4079,7 +4120,7 @@ shader_t *R_FindShader( const char *name, int lightmapIndex, imgFlags_t rawImage
 		shader_allowCompress = qtrue;
 	}
 
-	// FIXME: set these "need" values apropriately
+	// FIXME: set these "need" values appropriately
 	shader.needsNormal = qtrue;
 	shader.needsST1 = qtrue;
 	shader.needsST2 = qtrue;
@@ -4202,7 +4243,7 @@ qhandle_t RE_RegisterShaderFromImage(const char *name, int lightmapIndex, image_
 
 	InitShader( name, lightmapIndex );
 
-	// FIXME: set these "need" values apropriately
+	// FIXME: set these "need" values appropriately
 	shader.needsNormal = qtrue;
 	shader.needsST1 = qtrue;
 	shader.needsST2 = qtrue;
@@ -4361,12 +4402,12 @@ void	R_ShaderList_f (void) {
 		} else {
 			ri.Printf (PRINT_ALL, "  ");
 		}
-		// ZTM: TODO? Report MT if any state uses multitexture?
-		if ( shader->numUnfoggedPasses > 0 && shader->stages[0]->multitextureEnv == GL_ADD ) {
+		// ZTM: TODO? Report MT if any stage uses multitexture?
+		if ( shader->stages[0] && shader->stages[0]->multitextureEnv == GL_ADD ) {
 			ri.Printf( PRINT_ALL, "MT(a) " );
-		} else if ( shader->numUnfoggedPasses > 0 && shader->stages[0]->multitextureEnv == GL_MODULATE ) {
+		} else if ( shader->stages[0] && shader->stages[0]->multitextureEnv == GL_MODULATE ) {
 			ri.Printf( PRINT_ALL, "MT(m) " );
-		} else if ( shader->numUnfoggedPasses > 0 && shader->stages[0]->multitextureEnv == GL_DECAL ) {
+		} else if ( shader->stages[0] && shader->stages[0]->multitextureEnv == GL_DECAL ) {
 			ri.Printf( PRINT_ALL, "MT(d) " );
 		} else {
 			ri.Printf( PRINT_ALL, "      " );

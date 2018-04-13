@@ -96,7 +96,7 @@ File search order: when FS_FOpenFileRead gets called it will go through the fs_s
 structure and stop on the first successful hit. fs_searchpaths is built with successive
 calls to FS_AddGameDirectory
 
-Additionaly, we search in several subdirectories:
+Additionally, we search in several subdirectories:
 current game is the current mode
 base game is a variable to allow mods based on other mods
 (such as baseq3 + missionpack content combination in a mod for instance)
@@ -1442,11 +1442,12 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 		if(!unpure && fs_numServerPaks)
 		{
 			if(!FS_IsExt(filename, ".cfg", len) &&		// for config files
+			   !FS_IsExt(filename, ".txt", len) &&		// menu files, bots.txt, arenas.txt
 			   !FS_IsExt(filename, ".menu", len) &&		// menu files
 			   !FS_IsExt(filename, ".game", len) &&		// menu files
 			   !FS_IsExt(filename, ".dat", len) &&		// for journal files
-			   !strstr(filename, "fonts") &&
-			   !strstr(filename, "music") &&
+			   strncmp(filename, "fonts", 5) != 0 &&
+			   strncmp(filename, "music", 5) != 0 &&
 			   !FS_IsDemoExt(filename, len))			// demos
 			{
 				*file = 0;
@@ -1541,7 +1542,7 @@ long FS_FOpenFileRead(const char *filename, fileHandle_t *file, qboolean uniqueF
 	}
 	else
 	{
-		// When file is NULL, we're querying the existance of the file
+		// When file is NULL, we're querying the existence of the file
 		// If we've got here, it doesn't exist
 		return 0;
 	}
@@ -3639,6 +3640,23 @@ qboolean FS_CheckDirTraversal(const char *checkdir)
 
 /*
 ================
+FS_InvalidGameDir
+
+return true if path is a reference to current directory or directory traversal
+or a sub-directory
+================
+*/
+qboolean FS_InvalidGameDir( const char *gamedir ) {
+	if ( !strcmp( gamedir, "." ) || !strcmp( gamedir, ".." )
+		|| strchr( gamedir, '/' ) || strchr( gamedir, '\\' ) ) {
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+/*
+================
 FS_ComparePaks
 
 ----------------
@@ -4324,6 +4342,10 @@ static void FS_Startup( qboolean quiet )
 	if(!fs_gamedirvar->string[0])
 		Cvar_ForceReset("fs_game");
 
+	if (FS_InvalidGameDir(fs_gamedirvar->string)) {
+		Com_Error( ERR_DROP, "Invalid fs_game '%s'", fs_gamedirvar->string );
+	}
+
 	FS_ClearPakChecksums();
 	Com_Memset( &com_gameConfig, 0, sizeof (com_gameConfig) );
 
@@ -4971,7 +4993,7 @@ void FS_PureServerSetReferencedPaks( const char *pakSums, const char *pakNames )
 ================
 FS_InitFilesystem
 
-Called only at inital startup, not when the filesystem
+Called only at initial startup, not when the filesystem
 is resetting due to a game change
 ================
 */

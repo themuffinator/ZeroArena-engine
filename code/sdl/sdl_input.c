@@ -142,8 +142,7 @@ static qboolean IN_IsConsoleKey( keyNum_t key, int character )
 			if( !token[ 0 ] )
 				break;
 
-			if( strlen( token ) == 4 )
-				charCode = Com_HexStrToInt( token );
+			charCode = Com_HexStrToInt( token );
 
 			if( charCode > 0 )
 			{
@@ -379,7 +378,7 @@ static void IN_SetUIMousePosition( int localPlayerNum, int x, int y )
 IN_ActivateMouse
 ===============
 */
-static void IN_ActivateMouse( void )
+static void IN_ActivateMouse( qboolean isFullscreen )
 {
 	if (!mouseAvailable || !SDL_WasInit( SDL_INIT_VIDEO ) )
 		return;
@@ -393,7 +392,7 @@ static void IN_ActivateMouse( void )
 	}
 
 	// in_nograb makes no sense in fullscreen mode
-	if( !Cvar_VariableIntegerValue("r_fullscreen") )
+	if( !isFullscreen )
 	{
 		if( in_nograb->modified || !mouseActive )
 		{
@@ -417,14 +416,14 @@ static void IN_ActivateMouse( void )
 IN_DeactivateMouse
 ===============
 */
-static void IN_DeactivateMouse( qboolean showSystemCursor )
+static void IN_DeactivateMouse( qboolean isFullscreen, qboolean showSystemCursor )
 {
 	if( !SDL_WasInit( SDL_INIT_VIDEO ) )
 		return;
 
 	// Show the cursor when the mouse is disabled and not drawing UI cursor,
 	// but not when fullscreen
-	if( !Cvar_VariableIntegerValue("r_fullscreen") )
+	if( !isFullscreen )
 		SDL_ShowCursor( showSystemCursor );
 
 	if( !mouseAvailable )
@@ -1178,25 +1177,25 @@ void IN_Frame( void )
 	if( !cls.glconfig.isFullscreen && !mouseGrab && systemCursor )
 	{
 		// Loading in windowed mode
-		IN_DeactivateMouse( qtrue );
+		IN_DeactivateMouse( cls.glconfig.isFullscreen, qtrue );
 	}
 	else if( !cls.glconfig.isFullscreen && loading )
 	{
 		// Loading in windowed mode
-		IN_DeactivateMouse( qtrue );
+		IN_DeactivateMouse( cls.glconfig.isFullscreen, qtrue );
 	}
 	else if( !cls.glconfig.isFullscreen && !mouseGrab )
 	{
 		// Showing cursor in windowed mode
-		IN_DeactivateMouse( qfalse );
+		IN_DeactivateMouse( cls.glconfig.isFullscreen, qfalse );
 	}
 	else if( !( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
 	{
 		// Window not got focus
-		IN_DeactivateMouse( qtrue );
+		IN_DeactivateMouse( cls.glconfig.isFullscreen, qtrue );
 	}
 	else
-		IN_ActivateMouse( );
+		IN_ActivateMouse( cls.glconfig.isFullscreen );
 
 	IN_ProcessEvents( );
 
@@ -1245,7 +1244,7 @@ void IN_Init( void *windowData )
 	SDL_StartTextInput( );
 
 	mouseAvailable = ( in_mouse->value != 0 );
-	IN_DeactivateMouse( qtrue );
+	IN_DeactivateMouse( Cvar_VariableIntegerValue( "r_fullscreen" ) != 0, qtrue );
 
 	appState = SDL_GetWindowFlags( SDL_window );
 	Cvar_SetValue( "com_unfocused",	!( appState & SDL_WINDOW_INPUT_FOCUS ) );
@@ -1264,7 +1263,7 @@ void IN_Shutdown( void )
 {
 	SDL_StopTextInput( );
 
-	IN_DeactivateMouse( qtrue );
+	IN_DeactivateMouse( Cvar_VariableIntegerValue( "r_fullscreen" ) != 0, qtrue );
 	mouseAvailable = qfalse;
 
 	IN_ShutdownJoystick( );
