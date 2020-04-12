@@ -2317,7 +2317,7 @@ void CL_NextDownload(void)
 	// A download has finished, check whether this matches a referenced checksum
 	if(*clc.downloadName)
 	{
-		char *zippath = FS_BuildOSPath(Cvar_VariableString("fs_homepath"), clc.downloadName, "");
+		char *zippath = FS_BuildOSPath(Cvar_VariableString("fs_homePath"), clc.downloadName, "");
 		zippath[strlen(zippath)-1] = '\0';
 
 		if(!FS_CompareZipChecksum(zippath))

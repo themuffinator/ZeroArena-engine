@@ -138,19 +138,19 @@ IOQ3_RENDERER_GL2_ARCHS=""
 
 RENDERER_OPENGL="${IOQ3_RENDERER_PREFIX}opengl"
 
-EXECUTABLE_NAME="spearmint"
-DEDICATED_NAME="spearmint-server"
+EXECUTABLE_NAME="ZeroArena"
+DEDICATED_NAME="ZeroArena-server"
 
 RENDERER_OPENGL1_NAME="${RENDERER_OPENGL}1.dylib"
 RENDERER_OPENGL2_NAME="${RENDERER_OPENGL}2.dylib"
 
 ICNSDIR="misc"
-ICNS="spearmint.icns"
+ICNS="zeroarena.icns"
 PKGINFO="APPL????"
 
 OBJROOT="build"
 #BUILT_PRODUCTS_DIR="${OBJROOT}/${TARGET_NAME}-darwin-${CURRENT_ARCH}"
-PRODUCT_NAME="Spearmint"
+PRODUCT_NAME="ZeroArena"
 WRAPPER_EXTENSION="app"
 WRAPPER_NAME="${PRODUCT_NAME}.${WRAPPER_EXTENSION}"
 CONTENTS_FOLDER_PATH="${WRAPPER_NAME}/Contents"
@@ -198,12 +198,12 @@ done
 cd `dirname $0`
 
 if [ ! -f Makefile ]; then
-	echo "$0 must be run from the spearmint build directory"
+	echo "$0 must be run from the ZeroArena build directory"
 	exit 1
 fi
 
 if [ "${IOQ3_CLIENT_ARCHS}" == "" ]; then
-	echo "$0: no spearmint binary architectures were found for target '${TARGET_NAME}'"
+	echo "$0: no ZeroArena binary architectures were found for target '${TARGET_NAME}'"
 	exit 1
 fi
 
@@ -298,7 +298,7 @@ PLIST="<?xml version=\"1.0\" encoding=\"UTF-8\"?>
     <key>CFBundleExecutable</key>
     <string>${EXECUTABLE_NAME}</string>
     <key>CFBundleIconFile</key>
-    <string>spearmint</string>
+    <string>zeroarena</string>
     <key>CFBundleIdentifier</key>
     <string>moe.clover.${PRODUCT_NAME}</string>
     <key>CFBundleInfoDictionaryVersion</key>

@@ -54,7 +54,7 @@ a terminating zero. "..", "\\", and ":" are explicitly illegal in qpaths to prev
 references outside the quake directory system.
 
 The "base path" is the path to the directory holding all the game directories and usually
-the executable.  It defaults to ".", but can be overridden with a "+set fs_basepath c:\quake3"
+the executable.  It defaults to ".", but can be overridden with a "+set fs_basePath c:\quake3"
 command line to allow code debugging in a different directory.  Basepath cannot
 be modified at all after startup.  Any files that are created (demos, screenshots,
 etc) will be created relative to the base path, so base path should usually be writable.
@@ -252,13 +252,19 @@ typedef struct searchpath_s {
 
 static	char		fs_gamedir[MAX_OSPATH];	// this will be a single file name with no separators
 static	cvar_t		*fs_debug;
-static	cvar_t		*fs_homepath;
+static	cvar_t		*fs_homePath;
 #ifdef __APPLE__
 // Also search the .app bundle for .pk3 files
 static	cvar_t		*fs_apppath;
 #endif
-static	cvar_t		*fs_basepath;
-static	cvar_t		*fs_cdpath;
+static	cvar_t		*fs_basePath;
+static	cvar_t		*fs_q3PathDetection;
+static	cvar_t		*fs_q3Path;
+#ifdef QUAKELIVE
+static	cvar_t		*fs_qlLoad;
+static	cvar_t		*fs_qlPath;
+#endif
+static	cvar_t		*fs_useHomePath;
 static	cvar_t		*fs_gamedirvar;
 static	searchpath_t	*fs_searchpaths;
 static	searchpath_t	*fs_stashedPath = NULL;
@@ -363,6 +369,9 @@ struct {
 	{ 1627565872u, "etmain", "pak0" },
 	{ 1587932567u,"etmain", "pak1" },
 	{ 3477493040u, "etmain", "pak2" },
+
+	// ql
+	{ 3889727593u, "baseq3", "pak00" },
 };
 
 int numCommercialPaks = ARRAY_LEN( commercialPaks );
@@ -651,7 +660,7 @@ FS_HomeRemove
 int FS_HomeRemove( const char *homePath ) {
 	FS_CheckFilenameIsMutable( homePath, __func__ );
 
-	return remove( FS_BuildOSPath( fs_homepath->string,
+	return remove( FS_BuildOSPath( fs_homePath->string,
 			fs_gamedir, homePath ) ) != -1;
 }
 
@@ -689,7 +698,7 @@ NOTE TTimo: this goes with FS_FOpenFileWrite for opening the file afterwards
 */
 qboolean FS_FileExists(const char *file)
 {
-	return FS_FileInPathExists(FS_BuildOSPath(fs_homepath->string, fs_gamedir, file));
+	return FS_FileInPathExists(FS_BuildOSPath(fs_homePath->string, fs_gamedir, file));
 }
 
 /*
@@ -703,7 +712,7 @@ qboolean FS_SV_FileExists( const char *file )
 {
 	char *testpath;
 
-	testpath = FS_BuildOSPath( fs_homepath->string, NULL, file );
+	testpath = FS_BuildOSPath( fs_homePath->string, NULL, file );
 
 	return FS_FileInPathExists(testpath);
 }
@@ -719,12 +728,12 @@ qboolean FS_SV_RW_FileExists(const char *file)
 {
 	char *testpath;
 
-	testpath = FS_BuildOSPath( fs_homepath->string, NULL, file );
+	testpath = FS_BuildOSPath( fs_homePath->string, NULL, file );
 
 	if ( FS_FileInPathExists(testpath) )
 		return qtrue;
 
-	testpath = FS_BuildOSPath( fs_basepath->string, NULL, file );
+	testpath = FS_BuildOSPath( fs_basePath->string, NULL, file );
 
 	return FS_FileInPathExists(testpath);
 }
@@ -743,7 +752,7 @@ fileHandle_t FS_SV_FOpenFileWrite( const char *filename ) {
 		Com_Error( ERR_FATAL, "Filesystem call made without initialization" );
 	}
 
-	ospath = FS_BuildOSPath( fs_homepath->string, NULL, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, NULL, filename );
 
 	f = FS_HandleForFile();
 	fsh[f].zipFile = qfalse;
@@ -796,39 +805,53 @@ long FS_SV_FOpenFileRead(const char *filename, fileHandle_t *fp)
 	S_ClearSoundBuffer();
 
 	// search homepath
-	ospath = FS_BuildOSPath( fs_homepath->string, NULL, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, NULL, filename );
 
 	if ( fs_debug->integer ) {
-		Com_Printf( "FS_SV_FOpenFileRead (fs_homepath): %s\n", ospath );
+		Com_Printf( "FS_SV_FOpenFileRead (fs_homePath): %s\n", ospath );
 	}
 
 	fsh[f].handleFiles.file.o = Sys_FOpen( ospath, "rb" );
 	fsh[f].handleSync = qfalse;
 	if (!fsh[f].handleFiles.file.o)
 	{
-		// If fs_homepath == fs_basepath, don't bother
-		if (Q_stricmp(fs_homepath->string,fs_basepath->string))
+		// If fs_homePath == fs_basePath, don't bother
+		if (Q_stricmp(fs_homePath->string,fs_basePath->string))
 		{
 			// search basepath
-			ospath = FS_BuildOSPath( fs_basepath->string, NULL, filename );
+			ospath = FS_BuildOSPath( fs_basePath->string, NULL, filename );
 
 			if ( fs_debug->integer )
 			{
-				Com_Printf( "FS_SV_FOpenFileRead (fs_basepath): %s\n", ospath );
+				Com_Printf( "FS_SV_FOpenFileRead (fs_basePath): %s\n", ospath );
 			}
 
 			fsh[f].handleFiles.file.o = Sys_FOpen( ospath, "rb" );
 			fsh[f].handleSync = qfalse;
 		}
-
-		if (!fsh[f].handleFiles.file.o && fs_cdpath->string[0])
+#if 0
+		if (!fsh[f].handleFiles.file.o && fs_qlLoad->integer && fs_qlPath->string[0])
 		{
 			// search cd path
-			ospath = FS_BuildOSPath( fs_cdpath->string, NULL, filename );
+			ospath = FS_BuildOSPath(fs_qlPath->string, NULL, filename);
+
+			if (fs_debug->integer)
+			{
+				Com_Printf("FS_SV_FOpenFileRead (fs_qlPath): %s\n", ospath);
+			}
+
+			fsh[f].handleFiles.file.o = Sys_FOpen(ospath, "rb");
+			fsh[f].handleSync = qfalse;
+		}
+#endif
+		if (!fsh[f].handleFiles.file.o && fs_q3Path->string[0])
+		{
+			ospath = FS_BuildOSPath( fs_q3Path->string, NULL, filename );
+			ospath[strlen(ospath) - 1] = '\0';
 
 			if ( fs_debug->integer )
 			{
-				Com_Printf( "FS_SV_FOpenFileRead (fs_cdpath): %s\n", ospath );
+				Com_Printf( "FS_SV_FOpenFileRead (fs_q3Path): %s\n", ospath );
 			}
 
 			fsh[f].handleFiles.file.o = Sys_FOpen( ospath, "rb" );
@@ -913,8 +936,8 @@ void FS_SV_Rename( const char *from, const char *to, qboolean safe ) {
 	// don't let sound stutter
 	S_ClearSoundBuffer();
 
-	from_ospath = FS_BuildOSPath( fs_homepath->string, NULL, from );
-	to_ospath = FS_BuildOSPath( fs_homepath->string, NULL, to );
+	from_ospath = FS_BuildOSPath( fs_homePath->string, NULL, from );
+	to_ospath = FS_BuildOSPath( fs_homePath->string, NULL, to );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_SV_Rename: %s --> %s\n", from_ospath, to_ospath );
@@ -949,8 +972,8 @@ qboolean FS_Rename( const char *from, const char *to ) {
 	// don't let sound stutter
 	S_ClearSoundBuffer();
 
-	from_ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, from );
-	to_ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, to );
+	from_ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, from );
+	to_ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, to );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_Rename: %s --> %s\n", from_ospath, to_ospath );
@@ -1017,7 +1040,7 @@ fileHandle_t FS_FOpenFileWrite( const char *filename ) {
 	f = FS_HandleForFile();
 	fsh[f].zipFile = qfalse;
 
-	ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, filename );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_FOpenFileWrite: %s\n", ospath );
@@ -1065,7 +1088,7 @@ fileHandle_t FS_FOpenFileAppend( const char *filename ) {
 	// don't let sound stutter
 	S_ClearSoundBuffer();
 
-	ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, filename );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_FOpenFileAppend: %s\n", ospath );
@@ -1108,7 +1131,7 @@ fileHandle_t FS_FCreateOpenPipeFile( const char *filename ) {
 	// don't let sound stutter
 	S_ClearSoundBuffer();
 
-	ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, filename );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_FCreateOpenPipeFile: %s\n", ospath );
@@ -1380,7 +1403,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 						   !FS_IsExt(filename, ".bot", len) &&
 						   !FS_IsExt(filename, ".arena", len) &&
 						   !FS_IsExt(filename, ".menu", len) &&
-						   Q_stricmp(filename, "vm/" VM_PREFIX "game.qvm") != 0 &&
+						   Q_stricmp(filename, "vm/" VM_PREFIX "sgame.qvm") != 0 &&
 						   !strstr(filename, "levelshots"))
 						{
 							pak->referenced = qtrue;
@@ -1686,7 +1709,7 @@ int FS_DeleteDir( char *dirname, qboolean nonEmpty, qboolean recursive ) {
 	}
 
 	if ( recursive ) {
-		ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, dirname );
+		ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, dirname );
 		pFiles = Sys_ListFiles( ospath, "/", NULL, &nFiles, qfalse );
 		for ( i = 0; i < nFiles; i++ ) {
 			char temp[MAX_OSPATH];
@@ -1705,11 +1728,11 @@ int FS_DeleteDir( char *dirname, qboolean nonEmpty, qboolean recursive ) {
 	}
 
 	if ( nonEmpty ) {
-		ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, dirname );
+		ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, dirname );
 		pFiles = Sys_ListFiles( ospath, NULL, NULL, &nFiles, qfalse );
 		for ( i = 0; i < nFiles; i++ ) {
 			Com_sprintf( fileName, sizeof (fileName), "%s/%s", dirname, pFiles[i] );
-			ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, fileName );
+			ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, fileName );
 
 			if ( !FS_Remove( ospath ) ) {  // failure
 				return 0;
@@ -1718,7 +1741,7 @@ int FS_DeleteDir( char *dirname, qboolean nonEmpty, qboolean recursive ) {
 		Sys_FreeFileList( pFiles );
 	}
 
-	ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, dirname );
+	ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, dirname );
 
 	if ( Sys_Rmdir( ospath ) ) {
 		return 1;
@@ -1730,7 +1753,7 @@ int FS_DeleteDir( char *dirname, qboolean nonEmpty, qboolean recursive ) {
 /*
 ==============
 FS_Delete
-using fs_homepath for the file to remove
+using fs_homePath for the file to remove
 ==============
 */
 int FS_Delete( char *filename ) {
@@ -1750,7 +1773,7 @@ int FS_Delete( char *filename ) {
 		return 0;
 	}
 
-	ospath = FS_BuildOSPath( fs_homepath->string, fs_gamedir, filename );
+	ospath = FS_BuildOSPath( fs_homePath->string, fs_gamedir, filename );
 
 	if ( fs_debug->integer ) {
 		Com_Printf( "FS_Delete: %s\n", ospath );
@@ -2193,6 +2216,52 @@ long FS_ReadFile(const char *qpath, void **buffer)
 {
 	return FS_ReadFileDir(qpath, NULL, qfalse, buffer);
 }
+
+//muff
+//ql
+long FS_ReadFile2(const char* qpath, void** buffer) {
+	fileHandle_t	h;
+	byte* buf;
+	long			len;
+
+	if (!fs_searchpaths) {
+		Com_Error(ERR_FATAL, "Filesystem call made without initialization");
+	}
+
+	if (!qpath || !qpath[0]) {
+		Com_Error(ERR_FATAL, "FS_ReadFiles with empty name");
+	}
+
+	buf = NULL;	// quiet compiler warning
+
+	// look for it in the filesystem or pack files
+	len = FS_FOpenFileRead(qpath, &h, qfalse);
+
+	if (h == 0) {
+		if (buffer) *buffer = NULL;
+		return -1;
+	}
+
+	if (!buffer) {
+		FS_FCloseFile(h);
+		return len;
+	}
+
+	fs_loadCount++;
+	fs_loadStack++;
+
+	buf = Hunk_AllocateTempMemory(len + 1);
+	*buffer = buf;
+
+	FS_Read(buf, len, h);
+
+	// guarantee that it will have a trailing 0 for string operations
+	buf[len] = 0;
+	FS_FCloseFile(h);
+	return len;
+}
+//-ql
+//-muff
 
 /*
 =============
@@ -3026,9 +3095,9 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 	*listbuf = 0;
 	nMods = nTotal = 0;
 
-	pFiles0 = Sys_ListFiles( fs_homepath->string, NULL, NULL, &dummy, qtrue );
-	pFiles1 = Sys_ListFiles( fs_basepath->string, NULL, NULL, &dummy, qtrue );
-	pFiles2 = Sys_ListFiles( fs_cdpath->string, NULL, NULL, &dummy, qtrue );
+	pFiles0 = Sys_ListFiles( fs_homePath->string, NULL, NULL, &dummy, qtrue );
+	pFiles1 = Sys_ListFiles( fs_basePath->string, NULL, NULL, &dummy, qtrue );
+	pFiles2 = Sys_ListFiles( fs_q3Path->string, NULL, NULL, &dummy, qtrue );
 	// we searched for mods in the three paths
 	// it is likely that we have duplicate names now, which we will cleanup below
 	pFiles = Sys_ConcatenateFileLists( pFiles0, pFiles1, pFiles2 );
@@ -3059,13 +3128,13 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 		// in order to be a valid mod the directory must contain at least one .pk3 or .pk3dir
 		// we didn't keep the information when we merged the directory names, as to what OS Path it was found under
 		// so we will try each of them here
-		path = FS_BuildOSPath( fs_homepath->string, name, "" );
+		path = FS_BuildOSPath( fs_homePath->string, name, "" );
 		pFiles0 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
 
-		path = FS_BuildOSPath( fs_basepath->string, name, "" );
+		path = FS_BuildOSPath( fs_basePath->string, name, "" );
 		pFiles1 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
 
-		path = FS_BuildOSPath( fs_cdpath->string, name, "" );
+		path = FS_BuildOSPath( fs_q3Path->string, name, "" );
 		pFiles2 = Sys_ListFiles( path, ".pk3", NULL, &dummy, qfalse );
 		// we searched for paks in the three paths
 		// it is possible that we have duplicate names now
@@ -3076,7 +3145,7 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 		// don't list the mod if only Spearmint patch pk3 files are found
 		// example names: spearmint-patch-0.5.pk3, spearmint-baseq3-0.5.pk3
 		for ( pak = 0; pak < nPaks; pak++ ) {
-			if ( Q_stricmpn( pPaks[pak], "spearmint", 9 ) ) {
+			if ( Q_stricmpn( pPaks[pak], "zeroarena", 9 ) ) {
 				// found a pk3 that isn't a Spearmint patch pk3
 				break;
 			}
@@ -3093,13 +3162,13 @@ int	FS_GetModList( char *listbuf, int bufsize ) {
 
 		// check for .pk3dir directories
 		if ( nPaks == 0 ) {
-			path = FS_BuildOSPath( fs_homepath->string, name, "" );
+			path = FS_BuildOSPath( fs_homePath->string, name, "" );
 			pFiles0 = Sys_ListFiles( path, "/", NULL, &dummy, qfalse );
 
-			path = FS_BuildOSPath( fs_basepath->string, name, "" );
+			path = FS_BuildOSPath( fs_basePath->string, name, "" );
 			pFiles1 = Sys_ListFiles( path, "/", NULL, &dummy, qfalse );
 
-			path = FS_BuildOSPath( fs_cdpath->string, name, "" );
+			path = FS_BuildOSPath( fs_q3Path->string, name, "" );
 			pFiles2 = Sys_ListFiles( path, "/", NULL, &dummy, qfalse );
 			// we searched for paks in the three paths
 			// it is possible that we have duplicate names now
@@ -3970,8 +4039,8 @@ const char *FS_DefaultBaseGame( void ) {
 	filep = NULL;
 
 	// check for file with list of overrides
-	if ( !filep && fs_homepath->string[0] ) {
-		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_homepath->string, PATH_SEP, MINT_GAMELIST );
+	if ( !filep && fs_homePath->string[0] ) {
+		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_homePath->string, PATH_SEP, MINT_GAMELIST );
 		filep = Sys_FOpen( path, "rb" );
 	}
 #ifdef __APPLE__
@@ -3980,12 +4049,12 @@ const char *FS_DefaultBaseGame( void ) {
 		filep = Sys_FOpen( path, "rb" );
 	}
 #endif
-	if ( !filep && fs_basepath->string[0] ) {
-		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_basepath->string, PATH_SEP, MINT_GAMELIST );
+	if ( !filep && fs_basePath->string[0] ) {
+		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_basePath->string, PATH_SEP, MINT_GAMELIST );
 		filep = Sys_FOpen( path, "rb" );
 	}
-	if ( !filep && fs_cdpath->string[0] ) {
-		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_cdpath->string, PATH_SEP, MINT_GAMELIST );
+	if ( !filep && fs_q3Path->string[0] ) {
+		Com_sprintf( path, sizeof( path ), "%s%c%s", fs_q3Path->string, PATH_SEP, MINT_GAMELIST );
 		filep = Sys_FOpen( path, "rb" );
 	}
 
@@ -4050,12 +4119,16 @@ const char *FS_DefaultBaseGame( void ) {
 					continue;
 				}
 
-				if ( ( fs_homepath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_homepath->string, gamedir, file ) ) )
+				if ( ( fs_homePath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_homePath->string, gamedir, file ) ) )
 #ifdef __APPLE__
 					|| ( fs_apppath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_apppath->string, gamedir, file ) ) )
 #endif
-					|| ( fs_basepath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_basepath->string, gamedir, file ) ) )
-					|| ( fs_cdpath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_cdpath->string, gamedir, file ) ) ) ) {
+					|| ( fs_basePath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_basePath->string, gamedir, file ) ) )
+					|| ( fs_q3Path->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_q3Path->string, gamedir, file ) ) )
+#ifdef QUAKELIVE
+					|| ( fs_qlPath->string[0] && FS_FileInPathExists( FS_BuildOSPath( fs_qlPath->string, gamedir, file ) ) )
+#endif
+					) {
 					Com_Printf( "Using '%s' as default game as specified in %s.\n", gamedir, path );
 					Q_strncpyz( defaultBaseGame, gamedir, sizeof ( defaultBaseGame ) );
 					foundGameDir = qtrue;
@@ -4256,22 +4329,26 @@ FS_AddDirectory
 */
 void FS_AddDirectory( const char *qpath ) {
 	// add search path elements in reverse priority order
-	if (fs_cdpath->string[0]) {
-		FS_AddQPathDirectory( fs_cdpath->string, qpath );
+	if (fs_q3Path->string[0]) {
+		FS_AddQPathDirectory( fs_q3Path->string, qpath );
 	}
-	if (fs_basepath->string[0]) {
-		FS_AddQPathDirectory( fs_basepath->string, qpath );
+	if (fs_basePath->string[0]) {
+		FS_AddQPathDirectory( fs_basePath->string, qpath );
 	}
-
+#ifdef QUAKELIVE
+	if (fs_qlLoad->integer && fs_qlPath->string[0]) {
+		FS_AddQPathDirectory(fs_qlPath->string, qpath);
+	}
+#endif
 #ifdef __APPLE__
 	// Make MacOSX also include the base path included with the .app bundle
 	if (fs_apppath->string[0])
 		FS_AddQPathDirectory( fs_apppath->string, qpath );
 #endif
 
-	// fs_homepath is somewhat particular to *nix systems, only add if relevant
-	if (fs_homepath->string[0] && Q_stricmp(fs_homepath->string,fs_basepath->string)) {
-		FS_AddQPathDirectory ( fs_homepath->string, qpath );
+	// fs_homePath is somewhat particular to *nix systems, only add if relevant
+	if (fs_homePath->string[0] && Q_stricmp(fs_homePath->string,fs_basePath->string)) {
+		FS_AddQPathDirectory ( fs_homePath->string, qpath );
 	}
 }
 
@@ -4281,24 +4358,19 @@ FS_AddGame
 ================
 */
 static void FS_AddGame( const char *gameName ) {
-	// add search path elements in reverse priority order
-	if (fs_cdpath->string[0]) {
-		FS_AddGameDirectory( fs_cdpath->string, gameName );
+	if (fs_q3Path->string[0]) {
+		FS_AddGameDirectory(fs_q3Path->string, gameName);
 	}
-	if (fs_basepath->string[0]) {
-		FS_AddGameDirectory( fs_basepath->string, gameName );
-	}
-
 #ifdef __APPLE__
 	// Make MacOSX also include the base path included with the .app bundle
 	if (fs_apppath->string[0])
 		FS_AddGameDirectory( fs_apppath->string, gameName );
 #endif
 
-	// fs_homepath is somewhat particular to *nix systems, only add if relevant
-	if (fs_homepath->string[0] && Q_stricmp(fs_homepath->string,fs_basepath->string)) {
-		FS_CreatePath ( fs_homepath->string );
-		FS_AddGameDirectory ( fs_homepath->string, gameName );
+	// fs_homePath is somewhat particular to *nix systems, only add if relevant
+	if (fs_homePath->string[0] && Q_stricmp(fs_homePath->string,fs_basePath->string)) {
+		FS_CreatePath ( fs_homePath->string );
+		FS_AddGameDirectory ( fs_homePath->string, gameName );
 	}
 
 	FS_LoadGameConfig( &com_gameConfig, gameName, !Q_stricmp( gameName, fs_gamedirvar->string ) );
@@ -4317,33 +4389,44 @@ static void FS_Startup( qboolean quiet )
 {
 	const char	*homePath;
 	char		description[MAX_QPATH];
+	//char		*addPath;
 	int			i;
 
 	if (!quiet) {
 		Com_Printf( "----- FS_Startup -----\n" );
 	}
-
+	//Com_Error(ERR_DROP, "started\n");
 	fs_packFiles = 0;
 
 	fs_debug = Cvar_Get( "fs_debug", "0", 0 );
-	fs_cdpath = Cvar_Get ("fs_cdpath", Sys_SteamPath(), CVAR_INIT|CVAR_PROTECTED );
-	fs_basepath = Cvar_Get ("fs_basepath", Sys_DefaultInstallPath(), CVAR_INIT|CVAR_PROTECTED );
+	
+	fs_q3PathDetection = Cvar_Get("fs_q3PathDetection", "2", CVAR_INIT);
+	fs_q3Path = Cvar_Get("fs_q3Path", fs_q3PathDetection->integer ? Sys_SteamPath() : Sys_Q3Path(), CVAR_INIT);
+
+#ifdef QUAKELIVE
+	fs_qlLoad = Cvar_Get("fs_qlLoad", "1", CVAR_INIT);
+	fs_qlPath = Cvar_Get("fs_qlPath", fs_qlLoad->integer ? Sys_SteamPathQL() : "", CVAR_INIT);
+#endif
+	fs_basePath = Cvar_Get ("fs_basePath", Sys_DefaultInstallPath(), CVAR_INIT|CVAR_PROTECTED );
 #ifdef __APPLE__
 	fs_apppath = Cvar_Get ("fs_apppath", Sys_DefaultAppPath(), CVAR_INIT|CVAR_PROTECTED );
 #endif
-	homePath = FS_PortableHomePath();
-	if (!homePath || !homePath[0]) {
-		homePath = Sys_DefaultHomePath();
+	fs_useHomePath = Cvar_Get("fs_useHomePath", "1", CVAR_INIT);
+	if (fs_useHomePath->integer) {
+		homePath = FS_PortableHomePath();
+		if (!homePath || !homePath[0]) {
+			homePath = Sys_DefaultHomePath();
+		}
 	}
 	if (!homePath || !homePath[0]) {
-		homePath = fs_basepath->string;
+		homePath = fs_basePath->string;
 	}
-	fs_homepath = Cvar_Get ("fs_homepath", homePath, CVAR_INIT|CVAR_PROTECTED );
+	fs_homePath = Cvar_Get ("fs_homePath", homePath, CVAR_INIT|CVAR_PROTECTED );
 	fs_gamedirvar = Cvar_Get ("fs_game", FS_DefaultBaseGame(), CVAR_INIT|CVAR_SYSTEMINFO|CVAR_SERVERINFO );
 
 	if(!fs_gamedirvar->string[0])
 		Cvar_ForceReset("fs_game");
-
+	
 	if (FS_InvalidGameDir(fs_gamedirvar->string)) {
 		Com_Error( ERR_DROP, "Invalid fs_game '%s'", fs_gamedirvar->string );
 	}
@@ -4351,8 +4434,19 @@ static void FS_Startup( qboolean quiet )
 	FS_ClearPakChecksums();
 	Com_Memset( &com_gameConfig, 0, sizeof (com_gameConfig) );
 
+	//Com_Error(ERR_DROP, "Testicles one two");
 	FS_AddGame( fs_gamedirvar->string );
+	//FS_AddGame(BASEGAMEQ3);
 
+	// add search path elements in reverse priority order
+	if (fs_q3Path->string[0]) {
+		FS_AddGameDirectory(fs_q3Path->string, BASEGAMEQ3);
+	}
+#ifdef QUAKELIVE
+	if (fs_qlLoad->integer && fs_qlPath->string[0]) {
+		FS_AddGameDirectory(fs_qlPath->string, BASEGAMEQ3);
+	}
+#endif
 	if ( com_gameConfig.numGameDirs > 0 ) {
 		// hide fs_game path
 		FS_StashSearchPath();
@@ -4364,6 +4458,9 @@ static void FS_Startup( qboolean quiet )
 
 		// put fs_game at the head of list
 		FS_UnstashSearchPath();
+	}
+	if (fs_basePath->string[0]) {
+		FS_AddGameDirectory(fs_basePath->string, BASEGAME);
 	}
 
 	//
@@ -4402,7 +4499,6 @@ static void FS_Startup( qboolean quiet )
 		missingFiles = Sys_FOpen( "\\missing.txt", "ab" );
 	}
 #endif
-
 	if (!quiet) {
 		// print the current search paths
 		FS_Path_f();
@@ -5004,9 +5100,12 @@ void FS_InitFilesystem( void ) {
 	// we have to specially handle this, because normal command
 	// line variable sets don't happen until after the filesystem
 	// has already been initialized
-	Com_StartupVariable("fs_cdpath");
-	Com_StartupVariable("fs_basepath");
-	Com_StartupVariable("fs_homepath");
+	Com_StartupVariable("fs_q3Path");
+#ifdef QUAKELIVE
+	Com_StartupVariable("fs_qlPath");
+#endif
+	Com_StartupVariable("fs_basePath");
+	Com_StartupVariable("fs_homePath");
 	Com_StartupVariable("fs_game");
 
 	// try to start up normally
@@ -5034,7 +5133,7 @@ qboolean FS_TryLastValidGame( void ) {
 
 	FS_PureServerSetLoadedPaks("", "");
 
-	Cvar_Set("fs_basepath", lastValidBase);
+	Cvar_Set("fs_basePath", lastValidBase);
 	Cvar_Set("fs_game", lastValidGame);
 	lastValidBase[0] = '\0';
 	lastValidGame[0] = '\0';
@@ -5093,7 +5192,7 @@ void FS_Restart( qboolean gameDirChanged ) {
 		Sys_InitPIDFile( fs_gamedirvar->string );
 
 		// skip the q3config.cfg if "safe" is on the command line
-		// and only execute q3config.cfg if it exists in current fs_homepath + fs_gamedir
+		// and only execute q3config.cfg if it exists in current fs_homePath + fs_gamedir
 		if ( !Com_SafeMode() && FS_FileExists( Q3CONFIG_CFG ) ) {
 			Cbuf_AddText ("exec " Q3CONFIG_CFG "\n");
 		}
@@ -5110,7 +5209,7 @@ FS_GameValid
 =================
 */
 void FS_GameValid( void ) {
-	Q_strncpyz(lastValidBase, fs_basepath->string, sizeof(lastValidBase));
+	Q_strncpyz(lastValidBase, fs_basePath->string, sizeof(lastValidBase));
 	Q_strncpyz(lastValidGame, fs_gamedirvar->string, sizeof(lastValidGame));
 
 }

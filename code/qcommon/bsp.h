@@ -223,6 +223,7 @@ typedef struct bspFormat_s {
 	int			version;
 	bspFile_t	*(*loadFunction)( const struct bspFormat_s *format, const char *name, const void *data, int length );
 	int			(*saveFunction)( const struct bspFormat_s *format, const char *name, const bspFile_t *bsp, void **dataOut );
+	int			game;
 } bspFormat_t;
 
 // bsp_q3.c

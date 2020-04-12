@@ -58,7 +58,9 @@ Suite 120, Rockville, Maryland 20850 USA.
 static char homePath[ MAX_OSPATH ] = { 0 };
 
 // Used to store the Steam Quake 3 installation path
-static char steamPath[ MAX_OSPATH ] = { 0 };
+static char steamPath[MAX_OSPATH] = { 0 };
+static char steamPathQL[MAX_OSPATH] = { 0 };
+static char q3Path[MAX_OSPATH] = { 0 };
 
 // Used to store the GOG Quake 3 installation path
 static char gogPath[ MAX_OSPATH ] = { 0 };
@@ -142,21 +144,60 @@ char *Sys_DefaultHomePath( void )
 	return homePath;
 }
 
+
+
+/*
+================
+Sys_Q3Path
+
+================
+*/
+char* Sys_Q3Path(void)
+{
+	HKEY q3RegKey;
+	DWORD pathLen = MAX_OSPATH;
+	qboolean finishPath = qfalse;
+
+	if (!q3Path[0] && !RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\Id\\Quake III Arena", 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY, &q3RegKey))
+	{
+		pathLen = MAX_OSPATH;
+		if (RegQueryValueEx(q3RegKey, "INSTALLPATH", NULL, NULL, (LPBYTE)q3Path, &pathLen))
+			q3Path[0] = '\0';
+
+		RegCloseKey(q3RegKey);
+	}
+
+	if (q3Path[0])
+	{
+		if (pathLen == MAX_OSPATH)
+			pathLen--;
+
+		q3Path[pathLen] = '\0';
+
+		if (finishPath)
+			Q_strcat(q3Path, MAX_OSPATH, "\\SteamApps\\common\\" STEAMPATH_NAME_Q3);
+	}
+
+	return q3Path;
+}
+
+
+
 /*
 ================
 Sys_SteamPath
 ================
 */
-char *Sys_SteamPath( void )
+char* Sys_SteamPath(void)
 {
-#if defined(STEAMPATH_NAME) || defined(STEAMPATH_APPID)
+#if defined(STEAMPATH_NAME_Q3) || defined(STEAMPATH_APPID_Q3)
 	HKEY steamRegKey;
 	DWORD pathLen = MAX_OSPATH;
 	qboolean finishPath = qfalse;
 
-#ifdef STEAMPATH_APPID
+#ifdef STEAMPATH_APPID_Q3
 	// Assuming Steam is a 32-bit app
-	if (!steamPath[0] && !RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App " STEAMPATH_APPID, 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY, &steamRegKey))
+	if (!steamPath[0] && !RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App " STEAMPATH_APPID_Q3, 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY, &steamRegKey))
 	{
 		pathLen = MAX_OSPATH;
 		if (RegQueryValueEx(steamRegKey, "InstallLocation", NULL, NULL, (LPBYTE)steamPath, &pathLen))
@@ -166,7 +207,7 @@ char *Sys_SteamPath( void )
 	}
 #endif
 
-#ifdef STEAMPATH_NAME
+#ifdef STEAMPATH_NAME_Q3
 	if (!steamPath[0] && !RegOpenKeyEx(HKEY_CURRENT_USER, "Software\\Valve\\Steam", 0, KEY_QUERY_VALUE, &steamRegKey))
 	{
 		pathLen = MAX_OSPATH;
@@ -189,11 +230,60 @@ char *Sys_SteamPath( void )
 		steamPath[pathLen] = '\0';
 
 		if (finishPath)
-			Q_strcat(steamPath, MAX_OSPATH, "\\SteamApps\\common\\" STEAMPATH_NAME );
+			Q_strcat(steamPath, MAX_OSPATH, "\\SteamApps\\common\\" STEAMPATH_NAME_Q3);
 	}
 #endif
 
 	return steamPath;
+}
+
+char* Sys_SteamPathQL(void)
+{
+#if defined(STEAMPATH_NAME_QL) || defined(STEAMPATH_APPID_QL)
+	HKEY steamRegKey;
+	DWORD pathLen = MAX_OSPATH;
+	qboolean finishPath = qfalse;
+
+#ifdef STEAMPATH_APPID_QL
+	// Assuming Steam is a 32-bit app
+	if (!steamPathQL[0] && !RegOpenKeyEx(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Steam App " STEAMPATH_APPID_QL, 0, KEY_QUERY_VALUE | KEY_WOW64_32KEY, &steamRegKey))
+	{
+		pathLen = MAX_OSPATH;
+		if (RegQueryValueEx(steamRegKey, "InstallLocation", NULL, NULL, (LPBYTE)steamPathQL, &pathLen))
+			steamPathQL[0] = '\0';
+
+		RegCloseKey(steamRegKey);
+	}
+#endif
+
+#ifdef STEAMPATH_NAME_QL
+	if (!steamPathQL[0] && !RegOpenKeyEx(HKEY_CURRENT_USER, "Software\\Valve\\Steam", 0, KEY_QUERY_VALUE, &steamRegKey))
+	{
+		pathLen = MAX_OSPATH;
+		if (RegQueryValueEx(steamRegKey, "SteamPath", NULL, NULL, (LPBYTE)steamPathQL, &pathLen))
+			if (RegQueryValueEx(steamRegKey, "InstallPath", NULL, NULL, (LPBYTE)steamPathQL, &pathLen))
+				steamPathQL[0] = '\0';
+
+		if (steamPathQL[0])
+			finishPath = qtrue;
+
+		RegCloseKey(steamRegKey);
+	}
+#endif
+
+	if (steamPathQL[0])
+	{
+		if (pathLen == MAX_OSPATH)
+			pathLen--;
+
+		steamPathQL[pathLen] = '\0';
+
+		if (finishPath)
+			Q_strcat(steamPathQL, MAX_OSPATH, "\\SteamApps\\common\\" STEAMPATH_NAME_QL);
+	}
+#endif
+
+	return steamPathQL;
 }
 
 /*

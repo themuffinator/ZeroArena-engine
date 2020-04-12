@@ -697,6 +697,20 @@ void CMod_LoadEntityString( void ) {
 	cm.numEntityChars = cm_bsp->entityStringLength;
 }
 
+//muff
+/*
+=================
+CMod_OverrideEntityString
+=================
+*/
+void CMod_OverrideEntityString(char* buf, const int len) {
+	//memset( cm.entityString, 0, sizeof(cm.entityString) );
+	cm.entityString = Hunk_Alloc(len, h_high);
+	cm.numEntityChars = len;
+	Com_Memcpy(cm.entityString, buf, len);
+}
+//-muff
+
 /*
 =================
 CMod_LoadVisibility
@@ -951,7 +965,14 @@ int		CM_NumInlineModels( void ) {
 }
 
 char	*CM_EntityString( void ) {
-	return cm.entityString;
+#ifdef QUAKELIVE
+	char* s = cm.entityString;
+	s = replace(s, "\"advertisement\"", "\"func_static\"");
+		
+	return s;
+#else
+return cm.entityString;
+#endif
 }
 
 qboolean CM_GetEntityToken( int *parseOffset, char *token, int size ) {

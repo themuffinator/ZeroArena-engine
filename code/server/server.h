@@ -219,6 +219,11 @@ typedef struct client_s {
 	qboolean		compat;
 #endif
 
+//muff
+	int			floodprot_count;
+	int			floodprot_time;
+	int			floodprot_decaytime;
+//-muff
 } client_t;
 
 //=============================================================================
@@ -311,7 +316,14 @@ extern	cvar_t	*sv_lanForceRate;
 extern	cvar_t	*sv_banFile;
 
 extern	cvar_t	*sv_public;
-
+//muff
+extern	cvar_t* sv_entList_dump;
+extern	cvar_t* sv_entList_load;
+extern	cvar_t* sv_floodProtect_decay;
+extern	cvar_t* sv_floodProtect_kick;
+extern	cvar_t* sv_floodProtect_maxcount;
+extern	cvar_t* sv_floodProtect_threshold;
+//-muff
 extern	serverBan_t serverBans[SERVER_MAXBANS];
 extern	int serverBansCount;
 

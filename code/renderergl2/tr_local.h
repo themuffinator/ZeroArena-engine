@@ -1346,6 +1346,11 @@ typedef struct {
 
 	char		*entityString;
 	char		*entityParsePoint;
+
+#ifdef QUAKELIVE
+	int			numAds;
+	dadvertisement_t ads[MAX_MAP_ADVERTISEMENTS];
+#endif
 } world_t;
 
 

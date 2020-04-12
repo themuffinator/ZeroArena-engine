@@ -218,7 +218,7 @@ Sys_PIDFileName
 */
 static char *Sys_PIDFileName( const char *gamedir )
 {
-	const char *homePath = Cvar_VariableString( "fs_homepath" );
+	const char *homePath = Cvar_VariableString( "fs_homePath" );
 
 	if( *homePath != '\0' )
 		return va( "%s/%s/%s", homePath, gamedir, PID_FILENAME );
@@ -426,7 +426,7 @@ void Sys_AnsiColorPrint( const char *msg )
 			{
 				// Print the color code
 				Com_sprintf( buffer, sizeof( buffer ), "\033[%dm",
-						q3ToAnsi[ ColorIndex( *( msg + 1 ) ) ] );
+						q3ToAnsi[(int)(((*(msg + 1)) & 0x07))] );
 				fputs( buffer, stderr );
 				msg += 2;
 			}
@@ -537,7 +537,7 @@ void Sys_UnloadDll( void *dllHandle )
 Sys_LoadDll
 
 First try to load library name from system library path,
-from executable path, then fs_basepath.
+from executable path, then fs_basePath.
 =================
 */
 
@@ -581,7 +581,7 @@ void *Sys_LoadDll(const char *name, qboolean useSystemLib)
 
 		if(!dllhandle)
 		{
-			const char *basePath = Cvar_VariableString("fs_basepath");
+			const char *basePath = Cvar_VariableString("fs_basePath");
 			
 			if(!basePath || !*basePath)
 				basePath = ".";
@@ -670,9 +670,9 @@ void Sys_ParseArgs( int argc, char **argv )
 		{
 			const char* date = PRODUCT_DATE;
 #ifdef DEDICATED
-			fprintf( stdout, Q3_VERSION " dedicated server (%s)\n", date );
+			fprintf( stdout, GAME_VERSION " dedicated server (%s)\n", date );
 #else
-			fprintf( stdout, Q3_VERSION " client (%s)\n", date );
+			fprintf( stdout, GAME_VERSION " client (%s)\n", date );
 #endif
 			Sys_Exit( 0 );
 		}

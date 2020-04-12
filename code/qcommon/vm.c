@@ -44,7 +44,7 @@ and one exported function: Perform
 #include "vm_local.h"
 
 cvar_t	*vm_cgameHeapMegs;
-cvar_t	*vm_gameHeapMegs;
+cvar_t	*vm_sgameHeapMegs;
 
 vm_t	*currentVM = NULL;
 vm_t	*lastVM    = NULL;
@@ -81,12 +81,12 @@ VM_Init
 */
 void VM_Init( void ) {
 	Cvar_Get( "vm_cgame", "0", CVAR_ARCHIVE );
-	Cvar_Get( "vm_game", "0", CVAR_ARCHIVE );
+	Cvar_Get( "vm_sgame", "0", CVAR_ARCHIVE );
 
 	vm_cgameHeapMegs = Cvar_Get( "vm_cgameHeapMegs", "2", CVAR_ARCHIVE );
-	vm_gameHeapMegs = Cvar_Get( "vm_gameHeapMegs", "24", CVAR_ARCHIVE );
+	vm_sgameHeapMegs = Cvar_Get( "vm_sgameHeapMegs", "24", CVAR_ARCHIVE );
 	Cvar_CheckRange( vm_cgameHeapMegs, 0, 128, qtrue );
-	Cvar_CheckRange( vm_gameHeapMegs, 0, 128, qtrue );
+	Cvar_CheckRange( vm_sgameHeapMegs, 0, 128, qtrue );
 
 	Cmd_AddCommand ("vmprofile", VM_VmProfile_f );
 	Cmd_AddCommand ("vminfo", VM_VmInfo_f );

@@ -1,4 +1,5 @@
 build
+exclude
 Makefile.local
 *.swp
 *tags

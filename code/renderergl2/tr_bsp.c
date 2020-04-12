@@ -2691,6 +2691,75 @@ void R_LoadEntities( const bspFile_t *bsp ) {
 	}
 }
 
+#ifdef QUAKELIVE
+/*
+====================
+R_LoadAdvertisements
+From WolfCam by Brugal
+====================
+*/
+void R_LoadAdvertisements(lump_t* l)
+{
+	dadvertisement_t* ads;
+	int i, count;
+
+	ads = (void*)(fileBase + l->fileofs);
+	if (l->filelen % sizeof(*ads)) {
+		ri.Error(ERR_DROP, "R_LoadAdvertisements: funny lump size in %s", s_worldData.name);
+	}
+	count = l->filelen / sizeof(*ads);
+
+	s_worldData.numAds = 0;
+
+	if (count > MAX_MAP_ADVERTISEMENTS) {
+		Com_Printf("R_LoadAdvertisements: count > MAX_MAP_ADVERTISEMENTS\n");
+		return;
+	}
+
+	if (!count) return;
+
+	s_worldData.numAds = count;
+
+	for (i = 0; i < count; i++, ads++) {
+
+		s_worldData.ads[i].cellId = LittleLong(ads->cellId);
+
+		s_worldData.ads[i].normal[0] = LittleFloat(ads->normal[0]);
+		s_worldData.ads[i].normal[1] = LittleFloat(ads->normal[1]);
+		s_worldData.ads[i].normal[2] = LittleFloat(ads->normal[2]);
+
+		s_worldData.ads[i].rect[0][0] = LittleFloat(ads->rect[0][0]);
+		s_worldData.ads[i].rect[0][1] = LittleFloat(ads->rect[0][1]);
+		s_worldData.ads[i].rect[0][2] = LittleFloat(ads->rect[0][2]);
+
+		s_worldData.ads[i].rect[1][0] = LittleFloat(ads->rect[1][0]);
+		s_worldData.ads[i].rect[1][1] = LittleFloat(ads->rect[1][1]);
+		s_worldData.ads[i].rect[1][2] = LittleFloat(ads->rect[1][2]);
+
+		s_worldData.ads[i].rect[2][0] = LittleFloat(ads->rect[2][0]);
+		s_worldData.ads[i].rect[2][1] = LittleFloat(ads->rect[2][1]);
+		s_worldData.ads[i].rect[2][2] = LittleFloat(ads->rect[2][2]);
+
+		s_worldData.ads[i].rect[3][0] = LittleFloat(ads->rect[3][0]);
+		s_worldData.ads[i].rect[3][1] = LittleFloat(ads->rect[3][1]);
+		s_worldData.ads[i].rect[3][2] = LittleFloat(ads->rect[3][2]);
+
+		Q_strncpyz(s_worldData.ads[i].model, ads->model, sizeof(s_worldData.ads[i].model));
+
+		{
+			int width, height;
+			float scale;
+
+			width = Distance(s_worldData.ads[i].rect[3], s_worldData.ads[i].rect[0]);
+
+			height = Distance(s_worldData.ads[i].rect[3], s_worldData.ads[i].rect[2]);
+
+			scale = (float)width / (float)height;
+		}
+	}
+}
+#endif
+
 /*
 =================
 R_GetEntityToken

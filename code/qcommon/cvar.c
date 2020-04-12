@@ -637,6 +637,84 @@ void Cvar_Print( cvar_t *v ) {
 	}
 }
 
+
+//muff
+/*
+===============
+Cvar_CmdAdd_f
+
+Adds/subtracts to the value of a cvar
+===============
+*/
+void Cvar_CmdAdd_f(void) {
+	float	value;
+	float	min, max;
+
+	if (Cmd_Argc() < 3 || Cmd_Argc() > 5) {
+		Com_xPrintf("Usage", "cvarAdd", "<variable> <amount> <min. limit> <max. limit>");
+		return;
+	}
+
+	min = atof(Cmd_Argv(3));
+	max = atof(Cmd_Argv(4));
+	value = Cvar_VariableValue(Cmd_Argv(1));
+	value += atof(Cmd_Argv(2));
+	if (Cmd_Argc() >= 4 && value < min)
+		value = min;
+	if (Cmd_Argc() == 5 && value > max)
+		value = max;
+
+	Cvar_Set(Cmd_Argv(1), va("%.4g", value));
+}
+
+
+/*
+===============
+Cvar_CmdMultiply_f
+
+Multiplies to the value of a cvar
+===============
+*/
+void Cvar_CmdMultiply_f(void) {
+	float	value;
+	float	min, max;
+
+	if (Cmd_Argc() < 3 || Cmd_Argc() > 5) {
+		Com_xPrintf("Usage", "cvarMulti", "<variable> <factor> <min. limit> <max. limit>");
+		return;
+	}
+
+	min = atof(Cmd_Argv(3));
+	max = atof(Cmd_Argv(4));
+	value = Cvar_VariableValue(Cmd_Argv(1));
+	value *= atof(Cmd_Argv(2));
+	if (Cmd_Argc() >= 4 && value < min)
+		value = min;
+	if (Cmd_Argc() == 5 && value > max)
+		value = max;
+
+	Cvar_Set(Cmd_Argv(1), va("%g", value));
+}
+
+
+/*
+===============
+Cvar_CmdCvarClear_f
+
+Clears the value of a cvar
+===============
+*/
+void Cvar_CmdCvarClear_f(void) {
+
+	if (Cmd_Argc() != 2) {
+		Com_Printf("Usage: cvarClear <variable>");
+		return;
+	}
+
+	Cvar_Set(Cmd_Argv(1), "");
+}//-muff
+
+
 /*
 ============
 Cvar_Set2
@@ -1776,4 +1854,12 @@ void Cvar_Init (void)
 	Cmd_AddCommand ("cvarlist", Cvar_List_f);
 	Cmd_AddCommand ("cvar_modified", Cvar_ListModified_f);
 	Cmd_AddCommand ("cvar_restart", Cvar_Restart_f);
+//nql
+	Cmd_AddCommand("cvarAdd", Cvar_CmdAdd_f);
+	Cmd_SetCommandCompletionFunc("cvarAdd", Cvar_CompleteCvarName);
+	Cmd_AddCommand("cvarMulti", Cvar_CmdMultiply_f);
+	Cmd_SetCommandCompletionFunc("cvarMulti", Cvar_CompleteCvarName);
+	Cmd_AddCommand("cvarClear", Cvar_CmdCvarClear_f);
+	Cmd_SetCommandCompletionFunc("cvarClear", Cvar_CompleteCvarName);
+//-nql
 }

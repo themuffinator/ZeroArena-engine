@@ -873,7 +873,9 @@ typedef struct {
 #define	MAX_MAP_DRAW_SURFS	0x20000
 #define	MAX_MAP_DRAW_VERTS	0x80000
 #define	MAX_MAP_DRAW_INDEXES	0x80000
-
+#ifdef QUAKELIVE
+#define MAX_MAP_ADVERTISEMENTS  0x20
+#endif
 
 // key / value pair sizes in the entities lump
 #define	MAX_KEY				32
@@ -889,5 +891,4 @@ typedef struct {
 #define MAX_WORLD_COORD		( 128*1024 )
 #define MIN_WORLD_COORD		( -128*1024 )
 #define WORLD_SIZE			( MAX_WORLD_COORD - MIN_WORLD_COORD )
-
 #endif

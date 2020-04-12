@@ -720,8 +720,8 @@ static void IN_InitJoystick( void )
 #if SDL_VERSION_ATLEAST( 2, 0, 2 )
 			{
 				static qboolean firstTime = qtrue;
-				const char *homePath = Cvar_VariableString("fs_homepath");
-				const char *basePath = Cvar_VariableString("fs_basepath");
+				const char *homePath = Cvar_VariableString("fs_homePath");
+				const char *basePath = Cvar_VariableString("fs_basePath");
 				char *testpath;
 				int numMappings;
 

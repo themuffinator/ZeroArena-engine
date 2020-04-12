@@ -368,7 +368,7 @@ RE_AddRefEntityToScene
 
 =====================
 */
-void RE_AddRefEntityToScene( const refEntity_t *ent, int entBufSize, int numVerts, const polyVert_t *verts, int numPolys ) {
+void RE_AddRefEntityToScene( const refEntity_t *ent, int entBufSize, int numVerts, const polyVert_t *verts, int numPolys) {
 	vec3_t cross;
 
 	if ( !tr.registered ) {

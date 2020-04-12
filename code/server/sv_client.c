@@ -1653,6 +1653,34 @@ void SV_ExecuteClientCommand( client_t *cl, const char *s, qboolean clientOK ) {
 		Com_DPrintf( "client text ignored for %s: %s\n", SV_ClientName( cl ), Cmd_Argv(0) );
 }
 
+//muff: flood protection
+/*
+===============
+SV_FloodProtection_Pass
+
+A new client command was received.
+Check if the client should be kicked for spamming the server.
+===============
+*/
+qboolean SV_FloodProtection_Pass(client_t* cl) {
+	if (cl->floodprot_time > svs.time) {
+		cl->floodprot_count++;
+	}
+	cl->floodprot_time = svs.time + sv_floodProtect_threshold->integer;
+
+	if (sv_floodProtect_maxcount->integer && (cl->floodprot_count + 1 > sv_floodProtect_maxcount->integer)) {
+		//Com_Printf( "SV_FloodProtection_Pass(): (flood limit exceeded) client:%s" S_COLOR_WHITE " floodcount:%i\n", cl->name, cl->floodprot_count );
+		if (sv_floodProtect_kick->integer)
+			SV_DropClient(cl, "was kicked for flooding the server.");
+		return qfalse;
+	}
+
+	//Com_Printf( "SV_FloodProtection_Pass(): (client OK) client:%s" S_COLOR_WHITE " floodcount:%i\n", cl->name, cl->floodprot_count );
+
+	return qtrue;
+}
+//-muff
+
 /*
 ===============
 SV_ClientCommand
@@ -1690,7 +1718,25 @@ static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 	// normal to spam a lot of commands when downloading
 	if ( !com_cl_running->integer && 
 		cl->state >= CS_ACTIVE &&
-		sv_floodProtect->integer && 
+		sv_floodProtect->integer
+
+//muff: flood protection
+					//&& svs.time < cl->nextReliableTime
+		) {
+		// ignore any other text messages from this client but let them keep playing
+		// TTimo - moved the ignored verbose to the actual processing in SV_ExecuteClientCommand, only printing if the core doesn't intercept
+
+		//clientOk = qfalse;
+		clientOk = SV_FloodProtection_Pass(cl);
+
+		// return if client is being kicked
+		//if ( !clientOk && sv_floodProtect_kick->integer ) return qfalse;
+}
+
+	// don't allow another command for one second
+	//cl->nextReliableTime = svs.time + 1000;
+#if 0		
+		&& 
 		svs.time < cl->nextReliableTime ) {
 		// ignore any other text messages from this client but let them keep playing
 		// TTimo - moved the ignored verbose to the actual processing in SV_ExecuteClientCommand, only printing if the core doesn't intercept
@@ -1699,6 +1745,8 @@ static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 
 	// don't allow another command for one second
 	cl->nextReliableTime = svs.time + 1000;
+#endif
+//-muff
 
 	SV_ExecuteClientCommand( cl, s, clientOk );
 

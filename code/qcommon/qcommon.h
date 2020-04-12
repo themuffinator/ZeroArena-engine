@@ -35,54 +35,73 @@ Suite 120, Rockville, Maryland 20850 USA.
 #include "../renderercommon/tr_public.h"
 
 // Engine name
-#define PRODUCT_NAME				"Spearmint"
+#define PRODUCT_NAME				"Zero Arena"
 
 // Keep this in-sync with VERSION in Makefile.
 #ifndef PRODUCT_VERSION
-	#define PRODUCT_VERSION			"1.0.2"
+	#define PRODUCT_VERSION			"1.0.1"
 #endif
 
-#define Q3_VERSION PRODUCT_NAME " " PRODUCT_VERSION
+#define GAME_VERSION PRODUCT_NAME " " PRODUCT_VERSION
 
 // Settings directory name
 // GNU/Linux: $HOME/.local/share/homepath-name (lower case and spaces replaced with hyphens)
 // MacOS: $HOME/Library/Application Support/Homepath Name
 // Windows: %APPDATA%\Homepath Name
-#define HOMEPATH_NAME				"Spearmint"
+#define HOMEPATH_NAME				"ZeroArena"
 
 // Steam installation information
-//#define STEAMPATH_NAME			"Quake 3 Arena"
-//#define STEAMPATH_APPID			"2200"
+#define STEAMPATH_NAME		"Quake 3 Arena"
+#define STEAMPATH_APPID		"2200"
+#define STEAMPATH_NAME_Q3		"Quake 3 Arena"
+#define STEAMPATH_APPID_Q3		"2200"
+#define STEAMPATH_NAME_QL		"Quake Live"
+#define STEAMPATH_APPID_QL		"282440"
 
 // Separates games in server browser. Must NOT contain whitespace (dpmaster will reject the game servers).
 // Change this if not compatible with Spearmint games aka cannot play them (such as if you break VM compatibility).
-#define GAMENAME_FOR_MASTER			"Spearmint"
+#define GAMENAME_FOR_MASTER			"ZeroArena"
 
 // Game's engine settings for compatibility and other information needed before loading CGame VM.
 // Probably don't need to change this, but if you break compatiblity feel free to give it a less stupid name.
-#define GAMESETTINGS				"mint-game.settings"
+#define GAMESETTINGS				"zeroarena-game.settings"
 
 // Prefix for game and cgame virtual machines. Example: vm/PREFIXcgame.qvm, PREFIXcgame_x86.dll
 // Change this if you break VM API compatibility with Spearmint.
 // You'll also need to change VM_PREFIX in game code Makefile.
-#define VM_PREFIX					"mint-"
+#define VM_PREFIX					"zeroarena-"
 
 // Prefix for renderer native libraries. Example: PREFIXopengl1_x86.dll
 // Change this if you break renderer compatibility with Spearmint.
 // You'll also need to change RENDERER_PREFIX in Makefile.
 #ifndef RENDERER_PREFIX
-	#define RENDERER_PREFIX			"spearmint-renderer-"
+	#define RENDERER_PREFIX			"zeroarena-renderer-"
 #endif
 
 // Default game to load (default fs_game value).
 // You can change this and it won't break network compatiblity.
 #ifndef BASEGAME
-	#define BASEGAME				"baseq3"
+	#define BASEGAME				"baseza"
 #endif
+
+#ifndef BASEGAMEQ3
+#define BASEGAMEQ3				"baseq3"
+#endif
+
+typedef enum {
+	BSPGAME_QUAKE1,
+	BSPGAME_QUAKE2,
+	BSPGAME_QUAKE3,
+	BSPGAME_QUAKELIVE,
+	BSPGAME_RTCW,
+	BSPGAME_DARKSALV
+} bspgames_t;
+
+
 
 // File containing a list of games to check if are installed to use as default base game.
 // This overrides BASEGAME if a game is found. If none are found, uses BASEGAME.
-#define MINT_GAMELIST					"spearmint-gamelist.txt"
+#define MINT_GAMELIST					"zeroarena-gamelist.txt"
 
 // In the future if the client-server protocol is modified, this may allow old and new engines to play together
 //#define LEGACY_PROTOCOL
@@ -767,6 +786,9 @@ void	FS_FCloseFile( fileHandle_t f );
 
 long	FS_ReadFileDir(const char *qpath, void *searchPath, qboolean unpure, void **buffer);
 long	FS_ReadFile(const char *qpath, void **buffer);
+//muff
+long	FS_ReadFile2(const char* qpath, void** buffer);
+//-muff
 // returns the length of the file
 // a null buffer will just return the file length without loading
 // as a quick check for existence. -1 length == not present
@@ -971,6 +993,7 @@ void		Com_RunAndTimeServerPacket(netadr_t *evFrom, msg_t *buf);
 qboolean	Com_IsVoipTarget(uint8_t *voipTargets, int voipTargetsSize, int playerNum);
 
 qboolean	Com_GameIsSinglePlayer(void);
+char		*replace(const char* s, const char* old, const char* new);
 
 void		Com_StartupVariable( const char *match );
 // checks for and removes command line "+set var arg" constructs
@@ -1291,7 +1314,10 @@ int		Sys_StatFile( char *ospath );
 char	*Sys_Cwd( void );
 void	Sys_SetDefaultInstallPath(const char *path);
 char	*Sys_DefaultInstallPath(void);
+//char* Sys_SteamPath(char* appName, char* appID);
+char	*Sys_Q3Path(void);
 char	*Sys_SteamPath(void);
+char	*Sys_SteamPathQL(void);
 char	*Sys_GogPath(void);
 
 #ifdef __APPLE__

@@ -71,7 +71,14 @@ cvar_t	*sv_lanForceRate; // dedicated 1 (LAN) server forces local client rates t
 cvar_t	*sv_banFile;
 
 cvar_t  *sv_public;
-
+//muff
+cvar_t* sv_entList_dump;
+cvar_t* sv_entList_load;
+cvar_t* sv_floodProtect_decay;
+cvar_t* sv_floodProtect_kick;
+cvar_t* sv_floodProtect_maxcount;
+cvar_t* sv_floodProtect_threshold;
+//-muff
 serverBan_t serverBans[SERVER_MAXBANS];
 int serverBansCount = 0;
 
@@ -1129,6 +1136,46 @@ int SV_FrameMsec()
 		return 1;
 }
 
+//muff: flood protection
+/*
+===============
+SV_FloodProtection_Decay
+
+Decrease the accumulated flood protection for a client
+===============
+*/
+void SV_FloodProtection_Decay(client_t* cl) {
+	if (cl->floodprot_time > svs.time) return;
+
+	if (!cl->floodprot_decaytime || (svs.time > cl->floodprot_decaytime + sv_floodProtect_decay->integer)) {
+		if (cl->floodprot_decaytime && cl->floodprot_count > 0) {
+			cl->floodprot_count--;
+		}
+		cl->floodprot_decaytime = svs.time;
+	}
+}
+
+/*
+=======================
+SV_FloodProtect_Frame
+=======================
+*/
+void SV_FloodProtection_Frame(void) {
+	int			i;
+	client_t* cl;
+
+	for (i = 0; i < sv_maxclients->integer; i++) {
+		cl = &svs.clients[i];
+
+		if (cl->state < CS_ACTIVE) continue;
+		if (*cl->downloadName) continue;
+
+		SV_FloodProtection_Decay(cl);
+		//Com_DPrintf( "SV_FloodProtection_Frame(): clientNum:%i decaytime:%i\n", i, cl->floodprot_decaytime );
+	}
+}
+//-muff
+
 /*
 ==================
 SV_Frame
@@ -1239,6 +1286,10 @@ void SV_Frame( int msec ) {
 
 	// check timeouts
 	SV_CheckTimeouts();
+
+//muff: flood protection
+	SV_FloodProtection_Frame();
+//-muff
 
 	// send messages back to the clients
 	SV_SendClientMessages();

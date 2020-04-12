@@ -813,7 +813,17 @@ void SV_Init (void)
 
 	sv_public = Cvar_Get("sv_public", "0", 0);
 	Cvar_CheckRange(sv_public, -2, 1, qtrue);
-
+//muff
+	sv_entList_dump = Cvar_Get("sv_entList_dump", "0", 0);
+	Cvar_CheckRange(sv_entList_dump, 0, 2, qtrue);
+	sv_entList_load = Cvar_Get("sv_entList_load", "1", 0);
+	Cvar_CheckRange(sv_entList_load, 0, 1, qtrue);
+	sv_floodProtect_decay = Cvar_Get("sv_floodProtect_decay", "1000", 0);
+	sv_floodProtect_kick = Cvar_Get("sv_floodProtect_kick", "0", 0);
+	Cvar_CheckRange(sv_floodProtect_kick, 0, 1, qtrue);
+	sv_floodProtect_maxcount = Cvar_Get("sv_floodProtect_maxcount", "10", 0);
+	sv_floodProtect_threshold = Cvar_Get("sv_floodProtect_threshold", "500", 0);
+//-muff
 	// initialize bot cvars so they are listed and can be set before loading the botlib
 	SV_BotInitCvars();
 

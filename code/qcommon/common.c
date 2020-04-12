@@ -254,6 +254,22 @@ void QDECL Com_Printf( const char *fmt, ... ) {
 	}
 }
 
+//muff
+void QDECL Com_xPrintf(const char* header, const char* mid, char* last, ...) {
+	va_list		argptr;
+	char		text[MAXPRINTMSG];
+	//char		*sheader, *smid, *slast;
+	//char		stxt[MAXPRINTMSG];
+
+	last = va(S_COLOR_CYAN "> %s: " S_COLOR_WHITE "%s " S_COLOR_CYAN "%s\n" S_COLOR_WHITE, header, mid, last);
+
+	va_start(argptr, last);
+	Q_vsnprintf(text, sizeof(text), last, argptr);
+	va_end(argptr);
+
+	Com_Printf("%s", text);
+}
+
 
 /*
 ================
@@ -879,7 +895,7 @@ const char *Z_CvarNameForZone( memzone_t *zone ) {
 	} else if ( zone == smallzone ) {
 		return NULL;
 	} else if ( zone == vm_gamezone ) {
-		return "vm_gameHeapMegs";
+		return "vm_sgameHeapMegs";
 	} else if ( zone == vm_cgamezone ) {
 		return "vm_cgameHeapMegs";
 	} else {
@@ -2726,7 +2742,7 @@ void Com_ExecuteCfg(void)
 	if(!Com_SafeMode())
 	{
 		// skip the q3config.cfg and autoexec.cfg if "safe" is on the command line
-		// and only execute q3config.cfg if it exists in current fs_homepath + fs_gamedir
+		// and only execute q3config.cfg if it exists in current fs_homePath + fs_gamedir
 		if (FS_FileExists(Q3CONFIG_CFG))
 		{
 			Cbuf_ExecuteText(EXEC_NOW, "exec " Q3CONFIG_CFG "\n");
@@ -2906,7 +2922,7 @@ void Com_Init( char *commandLine ) {
 	char	*s;
 	int	qport;
 
-	Com_Printf( "%s %s %s\n", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
+	Com_Printf( "%s %s %s\n", GAME_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 
 	if ( setjmp (abortframe) ) {
 		Sys_Error ("Error during initialization");
@@ -3027,7 +3043,7 @@ void Com_Init( char *commandLine ) {
 
 	com_productName = Cvar_Get( "com_productName", PRODUCT_NAME, CVAR_ROM );
 
-	s = va("%s %s %s", Q3_VERSION, PLATFORM_STRING, PRODUCT_DATE );
+	s = va("%s %s %s", GAME_VERSION, PLATFORM_STRING, PRODUCT_DATE );
 	com_version = Cvar_Get ("version", s, CVAR_ROM | CVAR_SERVERINFO );
 
 	// version string without platform and no compile date if version includes git commit date and hash
@@ -4147,4 +4163,42 @@ Com_GameIsSinglePlayer
 */
 qboolean Com_GameIsSinglePlayer( void ) {
 	return ( com_singlePlayerActive->integer );
+}
+
+/*
+==================
+replace
+Replace substrings in a string. Source: Netocrat from bytes.com
+==================
+*/
+char* replace(const char* s, const char* old, const char* new) {
+	char* ret;
+	int 	i, count = 0;
+
+	size_t newlen = strlen(new);
+	size_t oldlen = strlen(old);
+
+	for (i = 0; s[i] != '\0'; i++) {
+		if (strstr(&s[i], old) == &s[i]) {
+			count++;
+			i += oldlen - 1;
+		}
+	}
+
+	ret = Z_Malloc(i + 1 + count * (newlen - oldlen));
+	if (ret == NULL) return "";
+
+	i = 0;
+	while (*s) {
+		if (strstr(s, old) == s) {
+			strcpy(&ret[i], new);
+			i += newlen;
+			s += oldlen;
+		}
+		else
+			ret[i++] = *s++;
+	}
+	ret[i] = '\0';
+
+	return ret;
 }

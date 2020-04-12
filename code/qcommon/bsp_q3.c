@@ -63,6 +63,11 @@ typedef struct {
 #define	LUMP_VISIBILITY		16
 #define	HEADER_LUMPS		17
 
+#ifdef QUAKELIVE
+#define	QL_LUMP_ADVERTISEMENTS	17
+#define	QL_HEADER_LUMPS			18
+#endif
+
 typedef struct {
 	int			ident;
 	int			version;
@@ -168,6 +173,15 @@ typedef struct {
 	int			patchWidth; // ydnar: num foliage instances
 	int			patchHeight; // ydnar: num foliage mesh verts
 } realDsurface_t;
+
+#ifdef QUAKELIVE
+typedef struct {
+	int			cellId;
+	vec3_t		normal;
+	vec3_t		rect[4];
+	char		model[MAX_QPATH];
+} dadvertisement_t;
+#endif
 
 #define VIS_HEADER 8
 
@@ -788,6 +802,7 @@ bspFormat_t quake3BspFormat = {
 	Q3_BSP_VERSION,
 	BSP_LoadQ3,
 	BSP_SaveQ3,
+	BSPGAME_QUAKE3
 };
 
 // RTCW, ET, QuakeLive
@@ -797,6 +812,7 @@ bspFormat_t wolfBspFormat = {
 	WOLF_BSP_VERSION,
 	BSP_LoadQ3,
 	BSP_SaveQ3,
+	BSPGAME_RTCW
 };
 
 // Dark Salvation
@@ -806,5 +822,6 @@ bspFormat_t darksBspFormat = {
 	DARKS_BSP_VERSION,
 	BSP_LoadQ3,
 	BSP_SaveQ3,
+	BSPGAME_DARKSALV
 };
 

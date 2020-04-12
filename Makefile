@@ -1,5 +1,5 @@
 #
-# Spearmint Makefile
+# ZeroArena Makefile
 #
 # GNU Make required
 #
@@ -25,6 +25,10 @@ ifndef BUILD_FINAL
 endif
 ifndef BUILD_AUTOUPDATER  # DON'T build unless you mean to!
   BUILD_AUTOUPDATER=0
+endif
+
+ifndef QUAKELIVE
+QUAKELIVE=0
 endif
 
 #############################################################################
@@ -92,28 +96,28 @@ endif
 export CROSS_COMPILING
 
 ifndef VERSION
-VERSION=1.0.2
+VERSION=1.0.1
 endif
 
 ifndef CLIENTBIN
-CLIENTBIN=spearmint
+CLIENTBIN=ZeroArena
 endif
 
 ifndef SERVERBIN
-SERVERBIN=spearmint-server
+SERVERBIN=ZeroArena-server
 endif
 
 ifndef APPBUNDLE
 # must manually change PRODUCT_NAME in make-macosx-app.sh
-APPBUNDLE=Spearmint.app
+APPBUNDLE=ZeroArena.app
 endif
 
 ifndef RENDERER_PREFIX
-RENDERER_PREFIX=spearmint-renderer-
+RENDERER_PREFIX=zeroarena-renderer-
 endif
 
 ifndef BASEGAME
-BASEGAME=baseq3
+BASEGAME=baseza
 endif
 
 # Add "-DEXAMPLE" to define EXAMPLE in engine and game/cgame.
@@ -122,7 +126,7 @@ BUILD_DEFINES =
 endif
 
 ifndef COPYDIR
-COPYDIR="/usr/local/games/spearmint"
+COPYDIR="/usr/local/games/ZeroArena"
 endif
 
 ifndef COPYBINDIR
@@ -134,7 +138,7 @@ MOUNT_DIR=code
 endif
 
 ifndef BUILD_DIR
-BUILD_DIR=build
+BUILD_DIR=exclude/build
 endif
 
 ifndef TEMPDIR
@@ -166,7 +170,7 @@ ifndef USE_CURL_DLOPEN
 endif
 
 ifndef USE_CODEC_MP3
-USE_CODEC_MP3=1
+USE_CODEC_MP3=0
 endif
 
 ifndef USE_CODEC_VORBIS
@@ -902,7 +906,7 @@ ifeq ($(PLATFORM),sunos)
   CC=gcc
   INSTALL=ginstall
   MKDIR=gmkdir -p
-  COPYDIR="/usr/local/share/games/spearmint"
+  COPYDIR="/usr/local/share/games/ZeroArena"
 
   ifneq ($(ARCH),x86)
     ifneq ($(ARCH),sparc)

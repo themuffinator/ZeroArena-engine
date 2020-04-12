@@ -598,6 +598,101 @@ void SV_ShutdownGameProgs( void ) {
 	PC_CheckOpenSourceHandles();
 }
 
+//muff
+/*
+==================
+SV_ReadEntityOverride
+
+==================
+*/
+static qboolean SV_ReadEntityOverride(void) {
+	char		rfname[MAX_OSPATH];
+	qboolean	entor = qfalse;
+
+	if (!sv_entList_load->integer) return qfalse;
+
+	// load ent file if it exists
+	//Q_strncpyz( rfname, va("maps/%s.ent", (sv.do_ent_or && sv.ent_or) ? sv.ent_or : sv_mapName->string), sizeof(rfname) );
+	//Com_sprintf( rfname, sizeof(rfname), "maps/%s.ent", (sv.do_ent_or && sv.ent_or) ? sv.ent_or : sv_mapName->string );
+	Q_strncpyz(rfname, va("maps/%s.ent", sv_mapname->string), sizeof(rfname));
+
+	if (FS_FileExists(rfname)) {
+		union {
+			char* c;	//c[65536];
+			void* v;
+		} f;
+		long		len;
+		char* text;
+
+		//Com_Printf( "Attempting to read override file (%s)...\n", rfname );
+		len = FS_ReadFile2(rfname, &f.v);
+		//Com_Printf( "Reading entity override file (%s).\n", rfname );
+		if (f.c) {
+			text = f.c;
+			//Com_Printf( "Entity override file length: %ld\n ", len );
+			////Com_Printf( "\nEntity override file string:\n " S_COLOR_CYAN "%s\n\n" S_COLOR_WHITE, text );
+
+			// start the entity parsing at the beginning
+			//Com_Printf( "Attempting to override entity string from file (%s)...\n", rfname );
+			CMod_OverrideEntityString(text, len);
+			sv.entityParsePoint = CM_EntityString();
+			//Com_Printf( "Overrode entity string from file (%s).\n", rfname );
+
+			entor = qtrue;
+		}
+		else {
+			//Com_Printf( "Entity override file is empty (%s).\n", rfname );
+		}
+		FS_FreeFile(f.v);
+	}
+	else {
+		//Com_Printf( "No entity override file (%s) found for current map.\n", rfname );
+	}
+	return entor;
+}
+
+/*
+==================
+SV_WriteEntityOverride
+
+==================
+*/
+static void SV_WriteEntityOverride(const qboolean entor) {
+	fileHandle_t	fw;
+	char			wfname[MAX_OSPATH];
+
+	// start the entity parsing at the beginning
+	sv.entityParsePoint = CM_EntityString();
+
+	// dump ent file if dumping is enabled and there's no override loaded
+	if (entor || !sv_entList_dump->integer) return;
+
+	//Q_strncpyz( wfname, va("%s/%s.ent", (sv_entList_dump->integer > 1) ? "maps" : "ents", sv_mapName->string), sizeof(wfname) );
+	Com_sprintf(wfname, sizeof(wfname), "maps/%s.ent", sv_mapname->string);
+
+	if (!FS_FileExists(wfname)) {
+		//Com_Printf( "Attempting to write entity override file: %s...\n", wfname );
+		fw = FS_FOpenFileWrite(wfname);	// , qfalse);
+
+		if (fw) {
+			FS_Write(sv.entityParsePoint, strlen(sv.entityParsePoint), fw);
+			//Com_Printf( "Saved entity override file: %s.\n", wfname );
+			FS_FCloseFile(fw);
+		}
+	}
+}
+
+/*
+==================
+SV_InitEntityOverride
+
+==================
+*/
+static void SV_InitEntityOverride(void) {
+	SV_WriteEntityOverride(SV_ReadEntityOverride());
+}
+//-muff
+
 /*
 ==================
 SV_InitGameVM
@@ -628,7 +723,8 @@ static void SV_InitGameVM( qboolean restart ) {
 	}
 
 	// start the entity parsing at the beginning
-	sv.entityParsePoint = CM_EntityString();
+	//sv.entityParsePoint = CM_EntityString();
+	SV_InitEntityOverride();
 
 	// clear all gentity pointers that might still be set from
 	// a previous level
@@ -677,8 +773,8 @@ Called on a normal map change, not on a map_restart
 */
 void SV_InitGameProgs( void ) {
 	// load the dll or bytecode
-	gvm = VM_Create( VM_PREFIX "game", SV_GameSystemCalls, Cvar_VariableValue( "vm_game" ),
-			TAG_GAME, Cvar_VariableValue( "vm_gameHeapMegs" ) * 1024 * 1024 );
+	gvm = VM_Create( VM_PREFIX "sgame", SV_GameSystemCalls, Cvar_VariableValue( "vm_sgame" ),
+			TAG_GAME, Cvar_VariableValue( "vm_sgameHeapMegs" ) * 1024 * 1024 );
 
 	if ( !gvm ) {
 		Com_Error( ERR_FATAL, "VM_Create on game failed" );

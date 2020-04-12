@@ -1387,7 +1387,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.ClearScene();
 		return 0;
 	case CG_R_ADDREFENTITYTOSCENE:
-		re.AddRefEntityToScene( VMA(1), args[2], 0, NULL, 0 );
+		re.AddRefEntityToScene( VMA(1), args[2], 0, NULL, 0);
 		return 0;
 	case CG_R_ADDPOLYREFENTITYTOSCENE:
 		re.AddRefEntityToScene( VMA(1), args[2], args[3], VMA(4), args[5] );

@@ -42,6 +42,9 @@ int			CM_NumClusters (void);
 int			CM_NumInlineModels( void );
 char		*CM_EntityString (void);
 qboolean	CM_GetEntityToken( int *parseOffset, char *token, int size );
+//muff
+void		CMod_OverrideEntityString(char* buf, const int len);
+//-muff
 
 // returns an ORed contents mask
 int			CM_PointContents( const vec3_t p, clipHandle_t model );
